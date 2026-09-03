@@ -1,76 +1,65 @@
 -- ============================================================
--- EOH Controller - U.lua
+-- EOH CONTROLLER - U
 -- Быстрое обновление: lua /home/U.lua
+-- ============================================================
+-- ВАЖНО:
+-- settings.lua, registry.dat и logs НИКОГДА не скачиваются
+-- и не перезаписываются этим updater.
 -- ============================================================
 
 local REPO = "https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling/main"
-
 local component = require("component")
 local filesystem = require("filesystem")
 local internet = require("internet")
 
-if not component.isAvailable("internet") then
-    io.write("[ERROR] Internet Card not found!\n")
-    return
-end
+if not component.isAvailable("internet") then print("[ERROR] Internet Card not found"); return end
 
 local FILES = {
-    { "/home/eoh/config.lua", "/home/eoh/config.lua" },
-    { "/home/eoh/logger.lua", "/home/eoh/logger.lua" },
-    { "/home/eoh/recipes.lua", "/home/eoh/recipes.lua" },
-    { "/home/eoh/theme.lua", "/home/eoh/theme.lua" },
-    { "/home/eoh/eoh_core.lua", "/home/eoh/eoh_core.lua" },
-    { "/home/eoh/gui.lua", "/home/eoh/gui.lua" },
-    { "/home/eoh/main.lua", "/home/eoh/main.lua" },
-    { "/U.lua", "/home/U.lua" },
-    { "/autorun.lua", "/autorun.lua" }
+    {"/home/eoh/config.lua", "/home/eoh/config.lua"},
+    {"/home/eoh/logger.lua", "/home/eoh/logger.lua"},
+    {"/home/eoh/recipes.lua", "/home/eoh/recipes.lua"},
+    {"/home/eoh/theme.lua", "/home/eoh/theme.lua"},
+    {"/home/eoh/eoh_core.lua", "/home/eoh/eoh_core.lua"},
+    {"/home/eoh/main.lua", "/home/eoh/main.lua"},
+    {"/home/hub/config.lua", "/home/hub/config.lua"},
+    {"/home/hub/registry.lua", "/home/hub/registry.lua"},
+    {"/home/hub/main.lua", "/home/hub/main.lua"},
+    {"/home/hub/setup.lua", "/home/hub/setup.lua"},
+    {"/U.lua", "/home/U.lua"},
+    {"/autorun.lua", "/autorun.lua"}
 }
 
-local function makeParent(path)
-    local dir = filesystem.path(path)
-    if dir and dir ~= "/" and not filesystem.exists(dir) then
-        filesystem.makeDirectory(dir)
-    end
+local function parent(path)
+    local d=filesystem.path(path)
+    if d and d~="/" and not filesystem.exists(d) then filesystem.makeDirectory(d) end
 end
 
-local function download(url, dest)
-    makeParent(dest)
-
-    local ok, err = pcall(function()
-        local response = internet.request(url .. "?v=" .. tostring(math.random(1000000, 9999999)))
-        local file = assert(io.open(dest, "w"))
-        for chunk in response do
-            file:write(chunk)
-        end
-        file:close()
+local function download(url,dest)
+    parent(dest)
+    local ok,err=pcall(function()
+        local resp=internet.request(url.."?v="..tostring(math.random(1000000,9999999)))
+        local f=assert(io.open(dest,"w"))
+        for chunk in resp do f:write(chunk) end
+        f:close()
     end)
-
-    return ok, err
+    return ok,err
 end
 
-io.write("\n==========================================\n")
-io.write("          EOH Controller - UPDATE        \n")
-io.write("==========================================\n\n")
+print("==========================================")
+print("          EOH Controller - UPDATE")
+print("==========================================")
+print("Saved settings/registry/logs are preserved.")
+print("")
 
-local okCount, failCount = 0, 0
-
-for _, entry in ipairs(FILES) do
-    io.write("[STATUS] " .. entry[2] .. "\n")
-
-    local ok, err = download(REPO .. entry[1], entry[2])
-    if ok then
-        io.write("[OK]     " .. entry[2] .. "\n")
-        okCount = okCount + 1
-    else
-        io.write("[FAILED] " .. entry[2] .. " -> " .. tostring(err) .. "\n")
-        failCount = failCount + 1
-    end
+local okc,fail=0,0
+for _,e in ipairs(FILES) do
+    io.write("[UPDATE] "..e[2].." ... ")
+    local ok,err=download(REPO..e[1],e[2])
+    if ok then print("OK"); okc=okc+1 else print("FAILED: "..tostring(err)); fail=fail+1 end
 end
 
-io.write(string.format("\nDone: %d OK, %d FAILED\n", okCount, failCount))
-
-if failCount == 0 then
-    io.write("Update complete. Rebooting...\n")
-    os.sleep(2)
+print(string.format("Done: %d OK, %d FAILED",okc,fail))
+if fail==0 then
+    os.sleep(1)
     require("computer").shutdown(true)
 end

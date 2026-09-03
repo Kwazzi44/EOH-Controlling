@@ -1,52 +1,30 @@
 -- ============================================================
--- EOH CONTROLLER - CONFIG / PHASE 3
+-- EOH CONTROLLER - DEFAULT CONFIG
+-- ============================================================
+-- ВАЖНО: этот файл содержит только значения по умолчанию.
+-- Пользовательские настройки хранятся в settings.lua и не
+-- обновляются через U.lua.
 -- ============================================================
 
 local config = {}
 
-config.gui_refresh = 0.25
-config.poll_interval = 0.5
+config.gui_refresh = 0.5
+config.poll_interval = 1.0
 
 config.log_file = "/home/eoh/logs/eoh.log"
 config.log_max_bytes = 1024 * 1024
+config.registry_file = "/home/eoh/registry.dat"
+config.settings_file = "/home/eoh/settings.lua"
 
--- Производственный режим.
-config.planet_tier = 1
-config.use_astral_arrays = false
-config.overclocks = 0
-config.auto_restart = true
-config.fluid_tolerance = 0.001
-
--- Поиск оборудования.
-config.auto_scan = true
-config.require_two_transposers = true
-
--- ВАЖНО: по умолчанию реальные переливы выключены.
+-- Реальная передача по умолчанию выключена до подтверждения.
 config.allow_fluid_transfer = false
 
--- Ручной тестовый объём.
--- По умолчанию ровно один буфер Fluid Interface.
-config.fill_test_amount = 16000
+-- Безопасность дозировки.
+config.max_transfer_attempts = 10000
+config.verification_delay = 0.05
+config.progress_poll = 0.5
 
--- Защита и параметры поточной подачи.
--- Эти значения используются ТОЛЬКО для будущего автоматического режима.
--- Они не означают, что EOH должен быть заполнен до target перед рецептом.
-config.fluid_control = {
-    min_trigger = 8000000,
-    target_level = 16000000,
-    max_transfer_per_call = 16000000,
-    verification_delay = 0.05,
-    max_no_progress_attempts = 3
-}
-
--- Физическая схема, подтверждённая диагностикой.
-config.transposer = {
-    eoh_side = 3,
-    fluid_interface_side_1 = 4,
-    fluid_interface_side_2 = 1,
-    hydrogen_tank = 1,
-    helium_tank = 2,
-    plasma_tank = 3
-}
+-- Минимально допустимый запас перед стартом потока.
+config.minimum_reservoir_fraction = 0.0
 
 return config
