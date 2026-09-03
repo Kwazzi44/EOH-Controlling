@@ -1,50 +1,35 @@
-# EOH Controller - Phase 2
+# EOH Controller - Phase 3
 
-Phase 2 builds the real read-only EOH core for OpenComputers.
-
-## Что уже работает
-
-- Поиск Eye of Harmony по `gt_machine`.
-- Поиск двух транспозеров по реальной схеме подключения.
-- Чтение прямого API EOH: progress, max progress, active, work allowed, has work.
-- Чтение и разбор `getSensorInformation()`.
-- Чтение H2 / He / Raw Stellar Plasma.
-- База T1-T9 из предоставленных рецептов.
-- Расчёт требуемых жидкостей для Production / Power.
-- Учет режима AA: без AA -> H2 + He; с AA -> Plasma.
-- Расчёт дефицита с учётом `fluid_tolerance`.
-- Проверка наличия источника жидкости в AE2 Fluid Interface.
-- Предварительный план операций `transferFluid()`.
-- GUI без полной очистки экрана при обычном обновлении.
-- Логирование с ротацией около 1 MiB.
+Phase 3 добавляет безопасный слой работы с жидкостями.
 
 ## Важно
 
-Phase 2 работает в dry-run режиме:
+Реальный `transferFluid()` выключен по умолчанию:
 
-`config.allow_fluid_transfer = false`
-
-Поэтому никакая жидкость автоматически не перекачивается.
-
-Масштабирование требований от overclock пока не применяется, пока не подтверждены реальные правила параметров EOH.
-
-## Запуск
-
-```text
-lua /home/eoh/main.lua
+```lua
+config.allow_fluid_transfer = false
 ```
 
-Клавиши:
+При `false` клавиша `F` только показывает, что live transfer заблокирован.
 
-- R - повторный Scan
-- C - расчёт требований (dry-run)
-- S - сенсор EOH
-- L - логи
-- B - назад
-- Q - выход
+Для контролируемого теста можно временно включить:
 
-## Обновление
-
-```text
-lua /home/U.lua
+```lua
+config.allow_fluid_transfer = true
 ```
+
+Тестовая кнопка использует только один буфер Fluid Interface:
+
+```lua
+config.fill_test_amount = 16000
+```
+
+После операции контроллер считывает EOH ещё раз и показывает:
+
+- запрошенный объём;
+- реально перемещённый объём, который вернул transposer;
+- объём EOH до операции;
+- объём EOH после операции;
+- наблюдаемую разницу.
+
+Автоматический Production/Power Loop в Phase 3 ещё не включён.
