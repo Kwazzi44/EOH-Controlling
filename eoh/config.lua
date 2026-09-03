@@ -1,2 +1,0 @@
--- EOH config
-return {}
