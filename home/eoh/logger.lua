@@ -17,7 +17,11 @@ local function ensureDirectory()
 end
 
 local function timestamp()
-    return os.date("[%Y-%m-%d %H:%M:%S]")
+    local t = os.date("*t")
+    return string.format(
+        "[%04d-%02d-%02d %02d:%02d:%02d]",
+        t.year, t.month, t.day, t.hour, t.min, t.sec
+    )
 end
 
 local function rotateIfNeeded()
@@ -45,7 +49,7 @@ local function writeLine(line)
     end
 
     table.insert(memory, line)
-    while #memory > 200 do
+    while #memory > 300 do
         table.remove(memory, 1)
     end
 end
@@ -57,19 +61,13 @@ function logger.init()
 end
 
 function logger.log(level, module, message)
-    level = tostring(level or "INFO")
-    module = tostring(module or "CORE")
-    message = tostring(message or "")
-
-    local line = string.format(
+    writeLine(string.format(
         "%s [%s] [%s] %s",
         timestamp(),
-        level,
-        module,
-        message
-    )
-
-    writeLine(line)
+        tostring(level or "INFO"),
+        tostring(module or "CORE"),
+        tostring(message or "")
+    ))
 end
 
 function logger.info(module, message)
@@ -105,7 +103,7 @@ function logger.load()
     memory = {}
     for line in file:lines() do
         table.insert(memory, line)
-        if #memory > 200 then
+        if #memory > 300 then
             table.remove(memory, 1)
         end
     end

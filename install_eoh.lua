@@ -1,6 +1,5 @@
 -- ============================================================
--- EOH Controller - U.lua
--- Быстрое обновление: lua /home/U.lua
+-- EOH Controller - INSTALLER
 -- ============================================================
 
 local REPO = "https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling/main"
@@ -37,7 +36,7 @@ local function download(url, dest)
     makeParent(dest)
 
     local ok, err = pcall(function()
-        local response = internet.request(url .. "?v=" .. tostring(math.random(1000000, 9999999)))
+        local response = internet.request(url .. "?v=" .. tostring(os.time()))
         local file = assert(io.open(dest, "w"))
         for chunk in response do
             file:write(chunk)
@@ -49,20 +48,20 @@ local function download(url, dest)
 end
 
 io.write("\n==========================================\n")
-io.write("          EOH Controller - UPDATE        \n")
+io.write("       EOH Controller - INSTALLER        \n")
 io.write("==========================================\n\n")
 
 local okCount, failCount = 0, 0
 
 for _, entry in ipairs(FILES) do
-    io.write("[STATUS] " .. entry[2] .. "\n")
-
+    io.write("[..] " .. entry[2] .. "\n")
     local ok, err = download(REPO .. entry[1], entry[2])
+
     if ok then
-        io.write("[OK]     " .. entry[2] .. "\n")
+        io.write("[OK] " .. entry[2] .. "\n")
         okCount = okCount + 1
     else
-        io.write("[FAILED] " .. entry[2] .. " -> " .. tostring(err) .. "\n")
+        io.write("[!!] " .. entry[2] .. " -> " .. tostring(err) .. "\n")
         failCount = failCount + 1
     end
 end
@@ -70,7 +69,7 @@ end
 io.write(string.format("\nDone: %d OK, %d FAILED\n", okCount, failCount))
 
 if failCount == 0 then
-    io.write("Update complete. Rebooting...\n")
+    io.write("Installation complete. Rebooting...\n")
     os.sleep(2)
     require("computer").shutdown(true)
 end

@@ -1,38 +1,56 @@
 -- ============================================================
--- EOH CONTROLLER - CORE
+-- EOH CONTROLLER - CORE / PHASE 2
 -- ============================================================
--- Здесь находится вся логика поиска EOH и двух транспозеров,
--- чтения состояния и безопасной подачи жидкостей.
+-- Реальная интеграция с EOH через OpenComputers Adapter.
 --
--- ВАЖНО:
--- На первом этапе ядро НЕ запускает рецепт автоматически.
--- Функции transferFluid() работают только по явному вызову.
+-- Phase 2 умеет:
+--   * искать EOH и оба транспозера;
+--   * читать прямые методы EOH;
+--   * разбирать 27 строк Sensor Information;
+--   * читать H2 / He / Raw Stellar Plasma;
+--   * выбирать рецепт и режим входа;
+--   * рассчитывать дефицит жидкостей;
+--   * читать доступный запас в AE2 Fluid Interface;
+--   * строить план подачи без фактического transfer.
+--
+-- Реальная перекачка намеренно заблокирована config.allow_fluid_transfer=false.
 -- ============================================================
 
 local component = require("component")
 local config = require("config")
 local logger = require("logger")
+local recipes = require("recipes")
 
 local EOH = {}
+
 EOH.state = {
     controller = nil,
     transposers = {},
     scanned = false,
-    lastError = nil
+    lastError = nil,
+    lastScan = 0
 }
 
 local FLUIDS = {
     hydrogen = {
         tank = 1,
-        names = {"hydrogen", "водород"}
+        names = {"hydrogen", "водород"},
+        label = "Hydrogen"
     },
     helium = {
         tank = 2,
-        names = {"helium", "гелий"}
+        names = {"helium", "гелий"},
+        label = "Helium"
     },
     plasma = {
         tank = 3,
-        names = {"rawstarmatter", "raw stellar plasma", "сырой звёздной плазм", "конденсированной сырой"}
+        names = {
+            "rawstarmatter",
+            "raw stellar plasma",
+            "сырой звёздной плазм",
+            "конденсированной сырой звёздной плазм"
+        },
+        label = "Raw Stellar Plasma"
     }
 }
 
@@ -40,75 +58,62 @@ local function safeInvoke(address, method, ...)
     return pcall(component.invoke, address, method, ...)
 end
 
-local function lower(value)
-    return tostring(value or ""):lower()
-end
-
 local function cleanText(value)
     return tostring(value or ""):gsub("§.", "")
 end
 
-local function findNumber(text)
+local function lower(value)
+    return cleanText(value):lower()
+end
+
+local function contains(text, needle)
+    return lower(text):find(lower(needle), 1, true) ~= nil
+end
+
+local function parseFirstNumber(text)
     text = cleanText(text)
 
-    -- Ищем число с разделителями тысяч и десятичной частью.
-    local value = text:match("([%d][%d%.,%s]*)")
-    if not value then return nil end
+    -- Берём первое числовое значение после двоеточия, если оно есть.
+    local tail = text:match(":%s*([%-%d][%d%.,%s]*)")
+    local value = tail or text:match("([%-%d][%d%.,%s]*)")
+    if not value then
+        return nil
+    end
 
-    value = value:gsub("%s+", ""):gsub(",", "")
+    value = value:gsub("%s+", "")
 
-    -- Если строка использует запятую как десятичный разделитель,
-    -- это будет уточнено на уровне вызывающего кода. Для EOH нам
-    -- в первую очередь нужны целые объёмы.
-    local number = tonumber(value)
+    -- Сенсор EOH использует точку для дробей в наблюдаемом выводе.
+    -- Убираем разделители тысяч вида 1,000, но сохраняем десятичную точку.
+    value = value:gsub("(%d),(%d%d%d)", "%1%2")
+
+    return tonumber(value)
+end
+
+local function parsePercent(text)
+    local number = parseFirstNumber(text)
+    if not number then return nil end
     return number
 end
 
-local function containsAny(text, names)
-    local s = lower(cleanText(text))
-    for _, name in ipairs(names) do
-        if s:find(lower(name), 1, true) then
+local function isEOH(address)
+    local ok, name = safeInvoke(address, "getName")
+    if ok and type(name) == "string" then
+        local n = lower(name)
+        if n:find("multimachine.em.eye_of_harmony", 1, true)
+            or n:find("eye.of.harmony", 1, true)
+            or n:find("eye_of_harmony", 1, true)
+            or n:find("eye of harmony", 1, true) then
             return true
         end
     end
-    return false
-end
 
-local function parseFluidLine(line, names)
-    if not containsAny(line, names) then return nil end
-    return findNumber(line)
-end
-
-local function getName(address)
-    local methods = {"getName", "getMachineName", "getBlockName", "getCustomName"}
-
-    for _, method in ipairs(methods) do
-        local ok, value = safeInvoke(address, method)
-        if ok and type(value) == "string" and value ~= "" then
-            return cleanText(value)
-        end
-    end
-
-    return "Unknown"
-end
-
-local function isEOH(address)
-    local name = lower(getName(address))
-
-    if name:find("eye.of.harmony", 1, true)
-        or name:find("eye_of_harmony", 1, true)
-        or name:find("eye of harmony", 1, true) then
-        return true
-    end
-
-    -- Некоторые версии могут отдавать локализованное/внутреннее
-    -- имя. В таком случае дополнительно смотрим сенсор.
-    local ok, sensor = safeInvoke(address, "getSensorInformation")
-    if ok and type(sensor) == "table" then
+    -- Резерв: смотрим сенсор, не изменяя состояние машины.
+    local okSensor, sensor = safeInvoke(address, "getSensorInformation")
+    if okSensor and type(sensor) == "table" then
         for _, line in ipairs(sensor) do
-            local clean = lower(cleanText(line))
-            if clean:find("eye of harmony", 1, true)
-                or clean:find("eye_of_harmony", 1, true) then
+            local n = lower(line)
+            if n:find("eye of harmony", 1, true)
+                or n:find("eye_of_harmony", 1, true) then
                 return true
             end
         end
@@ -125,59 +130,30 @@ local function inspectTransposer(address)
         local okName, name = safeInvoke(address, "getInventoryName", side)
         local okCount, count = safeInvoke(address, "getTankCount", side)
 
-        name = okName and tostring(name) or ""
-        count = okCount and tonumber(count) or 0
+        name = okName and tostring(name or "") or ""
+        count = okCount and tonumber(count or 0) or 0
 
-        local lname = lower(name)
+        local n = lower(name)
 
-        if lname == "tile.fluid_interface" and count == 6 then
+        if n == "tile.fluid_interface" and count == 6 then
             fluidSide = side
-        end
-
-        if lname == "gt.blockmachines" and count == 1 then
+        elseif n == "gt.blockmachines" and count == 1 then
             eohSide = side
         end
     end
 
-    if not fluidSide or not eohSide then
+    if fluidSide == nil or eohSide == nil then
         return nil
-    end
-
-    -- Проверяем первые три танка, чтобы не принять случайный
-    -- Fluid Interface за наше устройство.
-    local expected = {"hydrogen", "helium", "rawstarmatter"}
-    local tanksOk = true
-
-    for tank = 1, 3 do
-        local ok, fluid = safeInvoke(
-            address,
-            "getFluidInTank",
-            fluidSide,
-            tank
-        )
-
-        if ok and type(fluid) == "table" and fluid.name then
-            local actual = lower(fluid.name)
-            if not actual:find(lower(expected[tank]), 1, true) then
-                tanksOk = false
-            end
-        end
-    end
-
-    if not tanksOk then
-        logger.warn("CORE", "Transposer layout found but tank mapping differs: " .. address)
-        -- Не отбрасываем устройство: на пустом интерфейсе данные
-        -- о жидкости могут отсутствовать. Стороны уже подтверждены.
     end
 
     return {
         address = address,
-        eohSide = eohSide,
         fluidSide = fluidSide,
+        eohSide = eohSide,
         tanks = {
-            hydrogen = 1,
-            helium = 2,
-            plasma = 3
+            hydrogen = config.transposer.hydrogen_tank,
+            helium = config.transposer.helium_tank,
+            plasma = config.transposer.plasma_tank
         }
     }
 end
@@ -186,15 +162,14 @@ function EOH.scan()
     EOH.state.controller = nil
     EOH.state.transposers = {}
     EOH.state.lastError = nil
+    EOH.state.scanned = false
 
-    -- --------------------------------------------------------
-    -- EOH Controller
-    -- --------------------------------------------------------
     for address, _ in component.list("gt_machine") do
         if isEOH(address) then
+            local ok, name = safeInvoke(address, "getName")
             EOH.state.controller = {
                 address = address,
-                name = getName(address)
+                name = ok and cleanText(name) or "Eye of Harmony"
             }
             break
         end
@@ -203,23 +178,14 @@ function EOH.scan()
     if not EOH.state.controller then
         EOH.state.lastError = "EOH controller not found"
         EOH.state.scanned = true
-        logger.error("CORE", "EOH controller not found")
+        logger.error("CORE", EOH.state.lastError)
         return false, EOH.state.lastError
     end
 
-    logger.info(
-        "CORE",
-        "EOH found: " .. EOH.state.controller.name
-            .. " @ " .. EOH.state.controller.address
-    )
-
-    -- --------------------------------------------------------
-    -- Two Transposers
-    -- --------------------------------------------------------
     for address, _ in component.list("transposer") do
-        local data = inspectTransposer(address)
-        if data then
-            table.insert(EOH.state.transposers, data)
+        local t = inspectTransposer(address)
+        if t then
+            table.insert(EOH.state.transposers, t)
         end
     end
 
@@ -227,21 +193,23 @@ function EOH.scan()
         return a.address < b.address
     end)
 
-    if #EOH.state.transposers < 2 and config.require_two_transposers then
-        EOH.state.lastError = "Required transposers not found"
+    if config.require_two_transposers and #EOH.state.transposers < 2 then
+        EOH.state.lastError = "Required 2 EOH transposers; found " .. #EOH.state.transposers
         EOH.state.scanned = true
-        logger.error(
-            "CORE",
-            "Expected 2 transposers, found " .. tostring(#EOH.state.transposers)
-        )
+        logger.error("CORE", EOH.state.lastError)
         return false, EOH.state.lastError
     end
 
     EOH.state.scanned = true
+    EOH.state.lastScan = os.clock and os.clock() or 0
 
     logger.info(
         "CORE",
-        "Transposers found: " .. tostring(#EOH.state.transposers)
+        string.format(
+            "Scan OK: EOH=%s, transposers=%d",
+            EOH.state.controller.name,
+            #EOH.state.transposers
+        )
     )
 
     return true
@@ -269,8 +237,7 @@ function EOH.getStatus()
     end
 
     local address = EOH.state.controller.address
-
-    local _, active = safeInvoke(address, "isMachineActive")
+    local okActive, active = safeInvoke(address, "isMachineActive")
     local okWork, hasWork = safeInvoke(address, "hasWork")
     local okAllowed, allowed = safeInvoke(address, "isWorkAllowed")
     local okProgress, progress = safeInvoke(address, "getWorkProgress")
@@ -281,11 +248,11 @@ function EOH.getStatus()
 
     local percent = 0
     if maxProgress > 0 then
-        percent = (progress / maxProgress) * 100
+        percent = math.max(0, math.min(100, progress * 100 / maxProgress))
     end
 
     return {
-        active = active == true,
+        active = okActive and active == true,
         hasWork = okWork and hasWork == true,
         workAllowed = okAllowed and allowed == true,
         progress = progress,
@@ -316,213 +283,368 @@ function EOH.getSensorInformation()
     return data
 end
 
-function EOH.getFluids()
-    local sensor, err = EOH.getSensorInformation()
-
-    local result = {
-        hydrogen = 0,
-        helium = 0,
-        plasma = 0
-    }
-
-    if not sensor then
-        return result, err
-    end
-
-    for _, rawLine in ipairs(sensor) do
-        local line = cleanText(rawLine)
-
-        local value
-        value = parseFluidLine(line, FLUIDS.hydrogen.names)
-        if value then result.hydrogen = value end
-
-        value = parseFluidLine(line, FLUIDS.helium.names)
-        if value then result.helium = value end
-
-        value = parseFluidLine(line, FLUIDS.plasma.names)
-        if value then result.plasma = value end
-    end
-
-    return result
-end
-
 function EOH.getRawSensorLines()
     return EOH.getSensorInformation()
 end
 
-function EOH.getRecipe(tier)
-    local recipes = require("recipes")
-    return recipes.get(tonumber(tier) or 1)
-end
-
-function EOH.getRecipeNeeds(tier, mode, useAA, overclocks)
-    local recipe = EOH.getRecipe(tier)
-    if not recipe then return nil, "Unknown tier" end
-
-    mode = mode or "production"
-    useAA = useAA == true
-    overclocks = tonumber(overclocks) or 0
-
-    local result = {
-        hydrogen = recipe.hydrogen,
-        helium = recipe.helium,
-        plasma = recipe.plasma,
-        duration = recipe.duration,
-        planet = recipe.planet,
-        starMatter = recipe.starMatter,
-        tier = tonumber(tier),
-        useAA = useAA,
-        overclocks = overclocks
-    }
-
-    -- На этом этапе AA/overclock пока НЕ преобразуют численные
-    -- требования рецепта: реальные правила масштабирования должны
-    -- быть подтверждены по getParameters()/сенсору EOH.
-    -- Поэтому база остаётся точным источником исходных значений.
-
-    if mode == "power" then
-        result.tier = 9
-        result.planet = "Deep Dark"
-        result.useAA = false
-        result.overclocks = 0
+function EOH.getSensorData()
+    local sensor, err = EOH.getSensorInformation()
+    if not sensor then
+        return nil, err
     end
 
-    return result
+    local data = {
+        lines = sensor,
+        hydrogen = 0,
+        helium = 0,
+        plasma = 0,
+        astralArrays = 0,
+        successChance = nil,
+        activeAstralArrays = 0,
+        totalOverclocks = 0,
+        recipeInput = nil,
+        recipeOutput = nil
+    }
+
+    for index, rawLine in ipairs(sensor) do
+        local line = cleanText(rawLine)
+        local l = lower(line)
+        local value = parseFirstNumber(line)
+
+        -- В наблюдаемом EOH-потоке поля жидкостей находятся на строках 13-16.
+        -- Дополнительно проверяем текст, чтобы парсер не зависел только от индекса.
+        if index == 14 or contains(l, "водород") or contains(l, "hydrogen") then
+            if value then data.hydrogen = value end
+        elseif index == 15 or contains(l, "гелий") or contains(l, "helium") then
+            if value then data.helium = value end
+        elseif index == 13 or contains(l, "сырая звёздная плазм")
+            or contains(l, "raw stellar plasma") or contains(l, "rawstarmatter") then
+            if value then data.plasma = value end
+        end
+
+        if contains(l, "астральных массивов") or contains(l, "astral arrays") then
+            if not contains(l, "действующие") and not contains(l, "active") then
+                data.astralArrays = value or data.astralArrays
+            else
+                data.activeAstralArrays = value or data.activeAstralArrays
+            end
+        end
+
+        if contains(l, "шанс успеха рецепта") or contains(l, "recipe success") then
+            data.successChance = parsePercent(line)
+        elseif contains(l, "вход рецепта") or contains(l, "recipe input") then
+            data.recipeInput = cleanText(line)
+        elseif contains(l, "выход рецепта") or contains(l, "recipe output") then
+            data.recipeOutput = cleanText(line)
+        elseif contains(l, "всего потеплений") or contains(l, "всего параллелей") or contains(l, "overclocks") then
+            data.totalOverclocks = value or data.totalOverclocks
+        end
+    end
+
+    return data
 end
 
-local function fluidLevel(transposer, fluidKey)
+function EOH.getFluids()
+    local data, err = EOH.getSensorData()
+    if not data then
+        return {
+            hydrogen = 0,
+            helium = 0,
+            plasma = 0
+        }, err
+    end
+
+    return {
+        hydrogen = data.hydrogen,
+        helium = data.helium,
+        plasma = data.plasma
+    }
+end
+
+local function readSourceTank(transposer, fluidKey)
     local tank = transposer.tanks[fluidKey]
-    local ok, level = safeInvoke(
+    local okFluid, fluid = safeInvoke(
+        transposer.address,
+        "getFluidInTank",
+        transposer.fluidSide,
+        tank
+    )
+
+    local okLevel, level = safeInvoke(
         transposer.address,
         "getTankLevel",
         transposer.fluidSide,
         tank
     )
 
-    if not ok then return 0 end
-    return tonumber(level) or 0
-end
-
-local function chooseTransposer(fluidKey)
-    local best = nil
-    local bestLevel = -1
-
-    for _, transposer in ipairs(EOH.state.transposers) do
-        local level = fluidLevel(transposer, fluidKey)
-        if level > bestLevel then
-            best = transposer
-            bestLevel = level
-        end
-    end
-
-    return best
-end
-
-function EOH.getSourceFluidState()
     local result = {
-        transposers = {}
+        amount = okLevel and tonumber(level) or 0,
+        name = nil,
+        label = nil,
+        capacity = nil
     }
 
-    for _, transposer in ipairs(EOH.state.transposers) do
-        local item = {
-            address = transposer.address,
-            hydrogen = fluidLevel(transposer, "hydrogen"),
-            helium = fluidLevel(transposer, "helium"),
-            plasma = fluidLevel(transposer, "plasma")
-        }
-        table.insert(result.transposers, item)
+    if okFluid and type(fluid) == "table" then
+        result.name = fluid.name
+        result.label = fluid.label
+        result.amount = tonumber(fluid.amount) or result.amount
+    end
+
+    local okCapacity, capacity = safeInvoke(
+        transposer.address,
+        "getTankCapacity",
+        transposer.fluidSide,
+        tank
+    )
+
+    if okCapacity then
+        result.capacity = tonumber(capacity)
     end
 
     return result
 end
 
-function EOH.transferFluid(fluidKey, amount)
-    if not EOH.state.scanned then
-        return false, 0, "Scan has not been performed"
+function EOH.getSourceFluidState()
+    local result = { transposers = {} }
+
+    for _, transposer in ipairs(EOH.state.transposers) do
+        table.insert(result.transposers, {
+            address = transposer.address,
+            hydrogen = readSourceTank(transposer, "hydrogen"),
+            helium = readSourceTank(transposer, "helium"),
+            plasma = readSourceTank(transposer, "plasma")
+        })
     end
 
-    local spec = FLUIDS[fluidKey]
-    if not spec then
-        return false, 0, "Unknown fluid: " .. tostring(fluidKey)
+    return result
+end
+
+function EOH.getRecipe(tier)
+    return recipes.get(tonumber(tier))
+end
+
+function EOH.getRecipeNeeds(tier, mode, useAA, overclocks)
+    tier = tonumber(tier) or config.planet_tier
+    mode = mode or "production"
+    useAA = useAA == true
+    overclocks = tonumber(overclocks) or 0
+
+    local recipe
+
+    if mode == "power" then
+        recipe = recipes.get(9)
+        useAA = false
+        overclocks = 0
+    else
+        recipe = recipes.get(tier)
     end
 
-    amount = math.floor(tonumber(amount) or 0)
-    if amount <= 0 then
-        return true, 0
+    if not recipe then
+        return nil, "Unknown tier: " .. tostring(tier)
     end
 
-    local totalTransferred = 0
-    local remaining = amount
+    local result = {
+        mode = mode,
+        tier = tonumber(mode == "power" and 9 or tier),
+        planet = recipe.planet,
+        display = recipe.display,
+        starMatter = recipe.starMatter,
+        duration = recipe.duration,
+        useAA = useAA,
+        overclocks = overclocks,
+        source = recipe,
+        inputMode = useAA and "plasma" or "hydrogen_helium",
+        hydrogen = useAA and 0 or recipe.hydrogen,
+        helium = useAA and 0 or recipe.helium,
+        plasma = useAA and recipe.plasma or 0,
+        overclockApplied = false
+    }
 
-    -- Используем оба транспозера последовательно, выбирая сначала
-    -- тот, где больше доступного данного флюида.
-    local ordered = {}
-    for _, t in ipairs(EOH.state.transposers) do
-        table.insert(ordered, t)
+    if overclocks > 0 then
+        result.calculationNote = "OC scaling is not applied in Phase 2 until EOH parameter rules are verified."
     end
 
-    table.sort(ordered, function(a, b)
-        return fluidLevel(a, fluidKey) > fluidLevel(b, fluidKey)
-    end)
+    return result
+end
 
-    for _, transposer in ipairs(ordered) do
-        if remaining <= 0 then break end
+local function tolerantMissing(required, current)
+    required = tonumber(required) or 0
+    current = tonumber(current) or 0
+    local tolerance = tonumber(config.fluid_tolerance) or 0
 
-        local available = fluidLevel(transposer, fluidKey)
-        if available > 0 then
-            local request = math.min(remaining, available)
+    if required <= 0 then
+        return 0
+    end
 
-            local ok, transferred = safeInvoke(
-                transposer.address,
-                "transferFluid",
-                transposer.fluidSide,
-                transposer.eohSide,
-                request,
-                spec.tank
-            )
+    local epsilon = required * tolerance
+    return math.max(0, required - current - epsilon)
+end
 
-            if not ok then
-                logger.error(
-                    "CORE",
-                    "transferFluid failed on " .. transposer.address
-                        .. ": " .. tostring(transferred)
-                )
-            else
-                transferred = tonumber(transferred) or 0
-                totalTransferred = totalTransferred + transferred
-                remaining = remaining - transferred
+function EOH.calculateFluidPlan(tier, mode, useAA, overclocks)
+    local needs, err = EOH.getRecipeNeeds(tier, mode, useAA, overclocks)
+    if not needs then return nil, err end
 
-                logger.info(
-                    "CORE",
-                    string.format(
-                        "Transferred %d L of %s via %s",
-                        transferred,
-                        fluidKey,
-                        transposer.address
-                    )
+    local current = EOH.getFluids()
+    local sources = EOH.getSourceFluidState()
+
+    local result = {
+        recipe = needs,
+        current = current,
+        required = {
+            hydrogen = needs.hydrogen,
+            helium = needs.helium,
+            plasma = needs.plasma
+        },
+        missing = {
+            hydrogen = tolerantMissing(needs.hydrogen, current.hydrogen),
+            helium = tolerantMissing(needs.helium, current.helium),
+            plasma = tolerantMissing(needs.plasma, current.plasma)
+        },
+        source = sources,
+        ready = true,
+        warnings = {}
+    }
+
+    local function sourceTotal(fluidKey)
+        local total = 0
+        for _, t in ipairs(sources.transposers) do
+            total = total + (t[fluidKey].amount or 0)
+        end
+        return total
+    end
+
+    for _, fluidKey in ipairs({"hydrogen", "helium", "plasma"}) do
+        local missing = result.missing[fluidKey]
+        local available = sourceTotal(fluidKey)
+
+        if missing > 0 then
+            if available < missing then
+                result.ready = false
+                table.insert(
+                    result.warnings,
+                    FLUIDS[fluidKey].label .. ": source shortage"
                 )
             end
         end
     end
 
-    if totalTransferred < amount then
-        return false, totalTransferred, "Not enough source fluid"
+    if overclocks > 0 then
+        table.insert(result.warnings, result.recipe.calculationNote)
     end
 
-    return true, totalTransferred
+    return result
+end
+
+function EOH.previewFluidTransfer(fluidKey, amount)
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then
+        return {
+            fluid = fluidKey,
+            requested = 0,
+            planned = 0,
+            remaining = 0,
+            operations = {}
+        }
+    end
+
+    local spec = FLUIDS[fluidKey]
+    if not spec then
+        return nil, "Unknown fluid: " .. tostring(fluidKey)
+    end
+
+    local sources = {}
+    for _, transposer in ipairs(EOH.state.transposers) do
+        local src = readSourceTank(transposer, fluidKey)
+        table.insert(sources, {
+            transposer = transposer,
+            amount = src.amount
+        })
+    end
+
+    table.sort(sources, function(a, b)
+        return a.amount > b.amount
+    end)
+
+    local remaining = amount
+    local operations = {}
+
+    for _, item in ipairs(sources) do
+        if remaining <= 0 then break end
+        local portion = math.min(remaining, item.amount)
+        if portion > 0 then
+            table.insert(operations, {
+                address = item.transposer.address,
+                sourceSide = item.transposer.fluidSide,
+                sinkSide = item.transposer.eohSide,
+                sourceTank = spec.tank,
+                amount = portion
+            })
+            remaining = remaining - portion
+        end
+    end
+
+    return {
+        fluid = fluidKey,
+        requested = amount,
+        planned = amount - remaining,
+        remaining = remaining,
+        operations = operations,
+        executable = remaining <= 0
+    }
+end
+
+function EOH.transferFluid(fluidKey, amount)
+    if not config.allow_fluid_transfer then
+        return false, 0, "Fluid transfer is disabled in Phase 2 (dry run)"
+    end
+
+    local plan, err = EOH.previewFluidTransfer(fluidKey, amount)
+    if not plan then
+        return false, 0, err
+    end
+
+    if not plan.executable then
+        return false, plan.planned, "Insufficient source fluid"
+    end
+
+    local total = 0
+
+    for _, op in ipairs(plan.operations) do
+        local ok, transferred = safeInvoke(
+            op.address,
+            "transferFluid",
+            op.sourceSide,
+            op.sinkSide,
+            op.amount,
+            op.sourceTank
+        )
+
+        if not ok then
+            logger.error("CORE", "transferFluid failed: " .. tostring(transferred))
+            return false, total, tostring(transferred)
+        end
+
+        transferred = tonumber(transferred) or 0
+        total = total + transferred
+    end
+
+    logger.info("CORE", string.format("Transferred %d L of %s", total, fluidKey))
+    return total >= amount, total
 end
 
 function EOH.inspect()
     local status = EOH.getStatus()
+    local sensor = EOH.getSensorData()
     local fluids = EOH.getFluids()
-    local sources = EOH.getSourceFluidState()
+    local source = EOH.getSourceFluidState()
 
     return {
         controller = EOH.getController(),
         transposers = EOH.getTransposers(),
         status = status,
+        sensor = sensor,
         fluids = fluids,
-        sourceFluids = sources
+        sourceFluids = source
     }
 end
 

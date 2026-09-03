@@ -1,169 +1,185 @@
 -- ============================================================
--- EOH CONTROLLER - MAIN
+-- EOH CONTROLLER - MAIN / PHASE 2
 -- ============================================================
 
-local component = require("component")
+package.path = "/home/eoh/?.lua;" .. package.path
+
 local event = require("event")
 local os = require("os")
+local computer = require("computer")
 
-local logger = require("logger")
-local theme = require("theme")
-local core = require("eoh_core")
 local config = require("config")
+local logger = require("logger")
+local core = require("eoh_core")
+local gui = require("gui")
 
 logger.init()
 logger.load()
 
-local gpu = component.isAvailable("gpu") and component.gpu or nil
-if gpu then
-    theme.init(gpu)
+local okGui, guiErr = gui.init()
+if not okGui then
+    io.write("EOH Controller: " .. tostring(guiErr) .. "\n")
+    return
 end
 
-local function fmtNumber(value)
-    local n = tonumber(value) or 0
-    local s = tostring(math.floor(n))
-    local sign = ""
-    if s:sub(1, 1) == "-" then
-        sign = "-"
-        s = s:sub(2)
-    end
+local VIEW = {
+    DASHBOARD = 1,
+    CALCULATION = 2,
+    SENSOR = 3,
+    LOGS = 4
+}
 
-    while true do
-        local replaced, count = s:gsub("^(%d+)(%d%d%d)", "%1 %2")
-        s = replaced
-        if count == 0 then break end
-    end
+local ui = {
+    view = VIEW.DASHBOARD,
+    dirty = true,
+    fullRedraw = true,
+    lastPoll = -1,
+    calculation = nil,
+    lastError = nil
+}
 
-    return sign .. s
-end
-
-local function draw()
-    if not gpu then return end
-
-    theme.clear()
-
+local function scan()
     local ok, err = core.scan()
-    local status = core.getStatus()
-    local fluids, fluidErr = core.getFluids()
-    local controller = core.getController()
-    local transposers = core.getTransposers()
-
-    theme.drawHeader(
-        "EOH Controller",
-        ok and (status.active and "ACTIVE" or "STOPPED") or "SCAN ERROR"
-    )
-
-    local C = theme.C
-
-    theme.gset(3, 5, "EOH", C.title, C.bg)
-    theme.gset(3, 6, "Controller:", C.dim, C.bg)
-    theme.gset(18, 6, controller and controller.name or "NOT FOUND", C.text, C.bg)
-
-    theme.gset(3, 7, "Progress:", C.dim, C.bg)
-    theme.gset(
-        18,
-        7,
-        string.format(
-            "%d / %d  (%.1f%%)",
-            status.progress,
-            status.maxProgress,
-            status.percent
-        ),
-        C.text,
-        C.bg
-    )
-
-    theme.gset(3, 8, "Work allowed:", C.dim, C.bg)
-    theme.gset(18, 8, tostring(status.workAllowed), C.text, C.bg)
-
-    theme.gset(3, 10, "LIQUIDS IN EOH", C.title, C.bg)
-    theme.gset(3, 11, "Hydrogen:", C.dim, C.bg)
-    theme.gset(22, 11, fmtNumber(fluids.hydrogen) .. " L", C.text, C.bg)
-
-    theme.gset(3, 12, "Helium:", C.dim, C.bg)
-    theme.gset(22, 12, fmtNumber(fluids.helium) .. " L", C.text, C.bg)
-
-    theme.gset(3, 13, "Raw Stellar Plasma:", C.dim, C.bg)
-    theme.gset(22, 13, fmtNumber(fluids.plasma) .. " L", C.text, C.bg)
-
-    theme.gset(3, 15, "TRANSPOSERS", C.title, C.bg)
-    theme.gset(3, 16, "Found:", C.dim, C.bg)
-    theme.gset(18, 16, tostring(#transposers), C.text, C.bg)
-
-    for i, transposer in ipairs(transposers) do
-        theme.gset(
-            3,
-            16 + i,
-            string.format(
-                "#%d  source side %d -> EOH side %d",
-                i,
-                transposer.fluidSide,
-                transposer.eohSide
-            ),
-            C.text,
-            C.bg
-        )
-    end
-
-    if not ok then
-        theme.gset(3, 20, "ERROR: " .. tostring(err), C.error, C.bg)
-    elseif fluidErr then
-        theme.gset(3, 20, "Sensor warning: " .. tostring(fluidErr), C.warn, C.bg)
-    end
-
-    theme.drawFooter({
-        {"R", "Rescan"},
-        {"S", "Sensor"},
-        {"Q", "Quit"}
-    })
+    ui.lastError = ok and nil or err
+    ui.dirty = true
+    ui.fullRedraw = true
 end
 
-local function showSensor()
-    if not gpu then return end
+local function dashboardData()
+    return {
+        controller = core.getController(),
+        transposers = core.getTransposers(),
+        status = core.getStatus(),
+        fluids = core.getFluids(),
+        sensor = core.getSensorData() or {
+            astralArrays = 0,
+            activeAstralArrays = 0,
+            successChance = nil,
+            totalOverclocks = 0
+        }
+    }
+end
 
-    local lines, err = core.getRawSensorLines()
-    theme.clear()
-    theme.drawHeader("EOH Sensor", "READ ONLY")
-
-    local C = theme.C
-    if not lines then
-        theme.gset(3, 5, "ERROR: " .. tostring(err), C.error, C.bg)
-    else
-        local y = 5
-        for _, line in ipairs(lines) do
-            if y >= select(2, theme.getRes()) - 3 then break end
-            theme.gset(3, y, theme.pad(line:gsub("§.", ""), select(1, theme.getRes()) - 5), C.text, C.bg)
-            y = y + 1
+local function redraw()
+    if ui.view == VIEW.DASHBOARD then
+        gui.drawDashboard(dashboardData(), ui.fullRedraw)
+    elseif ui.view == VIEW.CALCULATION then
+        if not ui.calculation then
+            ui.calculation = core.calculateFluidPlan(
+                config.planet_tier,
+                "production",
+                config.use_astral_arrays,
+                config.overclocks
+            )
         end
+        if ui.calculation then
+            gui.drawCalculation(ui.calculation, ui.fullRedraw)
+        end
+    elseif ui.view == VIEW.SENSOR then
+        local lines = core.getRawSensorLines() or {"Sensor unavailable"}
+        gui.drawSensor(lines)
+    elseif ui.view == VIEW.LOGS then
+        gui.drawLogs(logger.getLines(18))
     end
 
-    theme.drawFooter({{"B", "Back"}})
+    ui.dirty = false
+    ui.fullRedraw = false
 end
+
+local function openCalculation()
+    ui.view = VIEW.CALCULATION
+    ui.calculation = core.calculateFluidPlan(
+        config.planet_tier,
+        "production",
+        config.use_astral_arrays,
+        config.overclocks
+    )
+    ui.dirty = true
+    ui.fullRedraw = true
+end
+
+local function onKey(char)
+    if not char then return end
+
+    local c = string.char(char):lower()
+
+    if c == "q" then
+        return false
+    end
+
+    if c == "r" then
+        scan()
+        if ui.view == VIEW.CALCULATION then
+            ui.calculation = core.calculateFluidPlan(
+                config.planet_tier,
+                "production",
+                config.use_astral_arrays,
+                config.overclocks
+            )
+        end
+        return true
+    end
+
+    if c == "c" then
+        openCalculation()
+        return true
+    end
+
+    if c == "s" then
+        ui.view = VIEW.SENSOR
+        ui.dirty = true
+        ui.fullRedraw = true
+        return true
+    end
+
+    if c == "l" then
+        ui.view = VIEW.LOGS
+        ui.dirty = true
+        ui.fullRedraw = true
+        return true
+    end
+
+    if c == "b" then
+        ui.view = VIEW.DASHBOARD
+        ui.dirty = true
+        ui.fullRedraw = true
+        return true
+    end
+
+    return true
+end
+
+if config.auto_scan then
+    scan()
+else
+    ui.dirty = true
+end
+
+logger.info("MAIN", "EOH Controller started (Phase 2 / dry run)")
 
 while true do
-    draw()
+    if ui.dirty then
+        redraw()
+    end
 
-    local _, _, char, code = event.pull(config.gui_refresh)
+    -- Обновляем данные без полного перерисовывания экрана.
+    if ui.view == VIEW.DASHBOARD then
+        local now = computer.uptime()
+        if ui.lastPoll < 0 or now - ui.lastPoll >= config.poll_interval then
+            ui.lastPoll = now
+            ui.dirty = true
+            ui.fullRedraw = false
+        end
+    end
 
-    if char == string.byte("q") or char == string.byte("Q") then
-        break
-    elseif char == string.byte("r") or char == string.byte("R") then
-        core.scan()
-    elseif char == string.byte("s") or char == string.byte("S") then
-        showSensor()
-        while true do
-            local _, _, c = event.pull()
-            if c == string.byte("b") or c == string.byte("B") then
-                break
-            elseif c == string.byte("q") or c == string.byte("Q") then
-                os.exit()
-            end
+    local ev = table.pack(event.pull(config.gui_refresh))
+
+    if ev[1] == "key_down" then
+        local keepRunning = onKey(ev[3])
+        if keepRunning == false then
+            break
         end
     end
 end
 
-if gpu then
-    gpu.setBackground(theme.C.bg)
-    gpu.setForeground(theme.C.text)
-    gpu.fill(1, 1, select(1, theme.getRes()), select(2, theme.getRes()), " ")
-end
+logger.info("MAIN", "EOH Controller stopped")
