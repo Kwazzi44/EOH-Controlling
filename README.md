@@ -41,3 +41,6 @@ lua /home/hub/main.lua
 Экран конфигурации пока изменяет сохранённый профиль HUB. Он не записывает значения `setParameters()` непосредственно в контроллер EOH. Физическое сопоставление транспозера / стороны / tank по-прежнему меняется через Setup.
 
 Обновление через `/home/U.lua` не должно удалять пользовательский `registry.dat`, настройки и логи.
+
+
+Fix: HUB configuration is stored in /home/hub/hub_config.lua to avoid collision with /home/eoh/config.lua.

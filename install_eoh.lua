@@ -14,7 +14,7 @@ local FILES={
 {"/home/eoh/theme.lua","/home/eoh/theme.lua"},
 {"/home/eoh/eoh_core.lua","/home/eoh/eoh_core.lua"},
 {"/home/eoh/main.lua","/home/eoh/main.lua"},
-{"/home/hub/config.lua","/home/hub/config.lua"},
+{"/home/hub/hub_config.lua","/home/hub/hub_config.lua"},
 {"/home/hub/registry.lua","/home/hub/registry.lua"},
 {"/home/hub/main.lua","/home/hub/main.lua"},
 {"/home/hub/setup.lua","/home/hub/setup.lua"},
