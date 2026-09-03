@@ -1,67 +1,110 @@
--- recipes.lua
--- База данных рецептов EOH.
---
--- ВНИМАНИЕ: значения для T1-T8 необходимо сверить с вики GTNH и вашими
--- внутриигровыми данными. Здесь уже подготовлена структура и отдельный
--- точный рецепт Deep Dark T9.
+-- ============================================================
+-- EOH CONTROLLER - БАЗА РЕЦЕПТОВ
+-- ============================================================
+-- Источник данных: предоставленная пользователем база рецептов.
+-- На этом этапе данные оставлены в Lua-формате, чтобы не тащить
+-- дополнительный JSON-парсер в OpenComputers. Позже можно вынести
+-- только этот блок данных в recipes.json без изменения ядра.
 
-local recipes = {}
-
-local function makeRecipe(tier, planetName, matterType, hydrogen, helium, plasma, duration, notes)
-  return {
-    tier = tier,
-    planet = planetName,
-    matter = matterType,
-    hydrogen = hydrogen or 0,
-    helium = helium or 0,
-    plasma = plasma or 0,
-    duration = duration or 0,
-    notes = notes or "",
-  }
-end
-
-recipes.byTier = {
-  [1] = makeRecipe(1, "Overworld", "White Dwarf Matter", 0, 0, 0, 0, "TODO: заполнить по вики"),
-  [2] = makeRecipe(2, "Moon", "White Dwarf Matter", 0, 0, 0, 0, "TODO: заполнить по вики"),
-  [3] = makeRecipe(3, "Mars", "White Dwarf Matter", 0, 0, 0, 0, "TODO: заполнить по вики"),
-  [4] = makeRecipe(4, "Venus", "Black Dwarf Matter", 0, 0, 0, 0, "TODO: заполнить по вики"),
-  [5] = makeRecipe(5, "Mercury", "Black Dwarf Matter", 0, 0, 0, 0, "TODO: заполнить по вики"),
-  [6] = makeRecipe(6, "Europa", "Universum", 0, 0, 0, 0, "TODO: заполнить по вики"),
-  [7] = makeRecipe(7, "Io", "Universum", 0, 0, 0, 0, "TODO: заполнить по вики"),
-  [8] = makeRecipe(8, "Vega B", "Universum", 0, 0, 0, 0, "TODO: заполнить по вики"),
-  [9] = makeRecipe(9, "Deep Dark", "Energy", 10000000000, 10000000000, 0, 0, "Спецрецепт T9"),
+local recipes = {
+    [1] = {
+        planet = "Overworld",
+        hydrogen = 1000000000,
+        helium = 1000000000,
+        plasma = 12400,
+        duration = 2250,
+        starMatter = "WDM",
+        display = "T1 Overworld (WDM)"
+    },
+    [2] = {
+        planet = "Mars",
+        hydrogen = 2000000000,
+        helium = 2000000000,
+        plasma = 24800,
+        duration = 4409,
+        starMatter = "WDM",
+        display = "T2 Mars (WDM)"
+    },
+    [3] = {
+        planet = "Ceres",
+        hydrogen = 3000000000,
+        helium = 3000000000,
+        plasma = 37200,
+        duration = 6173,
+        starMatter = "WDM",
+        display = "T3 Ceres (WDM)"
+    },
+    [4] = {
+        planet = "Io",
+        hydrogen = 4000000000,
+        helium = 4000000000,
+        plasma = 49600,
+        duration = 7921,
+        starMatter = "BDM",
+        display = "T4 Io (BDM)"
+    },
+    [5] = {
+        planet = "Titan",
+        hydrogen = 5000000000,
+        helium = 5000000000,
+        plasma = 62000,
+        duration = 9650,
+        starMatter = "BDM",
+        display = "T5 Titan (BDM)"
+    },
+    [6] = {
+        planet = "Proteus",
+        hydrogen = 6000000000,
+        helium = 6000000000,
+        plasma = 74400,
+        duration = 11375,
+        starMatter = "BDM",
+        display = "T6 Proteus (BDM)"
+    },
+    [7] = {
+        planet = "Pluto",
+        hydrogen = 7000000000,
+        helium = 7000000000,
+        plasma = 86800,
+        duration = 13122,
+        starMatter = "Universium",
+        display = "T7 Pluto (Universium)"
+    },
+    [8] = {
+        planet = "Vega B",
+        hydrogen = 8000000000,
+        helium = 8000000000,
+        plasma = 99200,
+        duration = 14855,
+        starMatter = "Universium",
+        display = "T8 Vega B (Universium)"
+    },
+    [9] = {
+        planet = "Deep Dark",
+        hydrogen = 10000000000,
+        helium = 10000000000,
+        plasma = 124000,
+        duration = 16585,
+        starMatter = "Universium",
+        display = "T9 Deep Dark (Universium, 10B)"
+    }
 }
 
-recipes.powerMode = makeRecipe(9, "Deep Dark", "Energy", 10000000000, 10000000000, 0, 0, "Power Mode")
-
 function recipes.get(tier)
-  return recipes.byTier[tonumber(tier)]
+    return recipes[tier]
 end
 
-function recipes.listTiers()
-  local out = {}
-  for tier, recipe in pairs(recipes.byTier) do
-    out[#out + 1] = { tier = tier, planet = recipe.planet }
-  end
-  table.sort(out, function(a, b) return a.tier < b.tier end)
-  return out
+function recipes.getAll()
+    return recipes
 end
 
-function recipes.scale(recipe, overclocks)
-  overclocks = math.max(0, math.min(3, tonumber(overclocks) or 0))
-  local multiplier = 2 ^ overclocks
-  return {
-    tier = recipe.tier,
-    planet = recipe.planet,
-    matter = recipe.matter,
-    hydrogen = math.floor((recipe.hydrogen or 0) * multiplier),
-    helium = math.floor((recipe.helium or 0) * multiplier),
-    plasma = math.floor((recipe.plasma or 0) * multiplier),
-    duration = math.max(1, math.floor((recipe.duration or 1) / multiplier)),
-    notes = recipe.notes,
-    overclocks = overclocks,
-    multiplier = multiplier,
-  }
+function recipes.getAvailableTiers()
+    local tiers = {}
+    for tier, _ in pairs(recipes) do
+        table.insert(tiers, tier)
+    end
+    table.sort(tiers)
+    return tiers
 end
 
 return recipes

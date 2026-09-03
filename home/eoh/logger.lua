@@ -1,92 +1,116 @@
--- logger.lua
--- Простая система логирования с ротацией файла.
+-- ============================================================
+-- EOH CONTROLLER - LOGGER
+-- ============================================================
 
 local config = require("config")
+local filesystem = require("filesystem")
 
 local logger = {}
-logger.levels = { DEBUG = 1, INFO = 2, WARN = 3, ERROR = 4 }
-logger.currentLevel = logger.levels.INFO
+local memory = {}
+local initialized = false
 
-local function now()
-  local ok, oslib = pcall(require, "os")
-  if ok and oslib and oslib.date then
-    return oslib.date("%Y-%m-%d %H:%M:%S")
-  end
-  return tostring(os.time and os.time() or 0)
-end
-
-local function ensureDir(path)
-  local ok, filesystem = pcall(require, "filesystem")
-  if ok and filesystem and filesystem.exists and not filesystem.exists(path) then
-    filesystem.makeDirectory(path)
-  end
-end
-
-local function fileSize(path)
-  local ok, filesystem = pcall(require, "filesystem")
-  if ok and filesystem and filesystem.exists and filesystem.size then
-    if filesystem.exists(path) then
-      return filesystem.size(path)
+local function ensureDirectory()
+    local dir = filesystem.path(config.log_file)
+    if dir and not filesystem.exists(dir) then
+        filesystem.makeDirectory(dir)
     end
-  end
-  return 0
+end
+
+local function timestamp()
+    return os.date("[%Y-%m-%d %H:%M:%S]")
 end
 
 local function rotateIfNeeded()
-  ensureDir(config.logDir)
-  if fileSize(config.logFile) < config.maxLogSize then
-    return
-  end
+    local path = config.log_file
+    if not filesystem.exists(path) then return end
 
-  local timestamp = now():gsub("[: ]", "_")
-  local rotated = config.logFile .. "." .. timestamp
-  local filesystem = require("filesystem")
-  if filesystem.exists(rotated) then
-    filesystem.remove(rotated)
-  end
-  filesystem.rename(config.logFile, rotated)
+    local size = filesystem.size(path) or 0
+    if size < (config.log_max_bytes or 1024 * 1024) then
+        return
+    end
+
+    local backup = path .. ".1"
+    pcall(filesystem.remove, backup)
+    pcall(filesystem.rename, path, backup)
 end
 
-local function append(line)
-  ensureDir(config.logDir)
-  rotateIfNeeded()
+local function writeLine(line)
+    ensureDirectory()
+    rotateIfNeeded()
 
-  local f = io.open(config.logFile, "a")
-  if not f then return false end
-  f:write(line, "\n")
-  f:close()
-  return true
+    local file = io.open(config.log_file, "a")
+    if file then
+        file:write(line, "\n")
+        file:close()
+    end
+
+    table.insert(memory, line)
+    while #memory > 200 do
+        table.remove(memory, 1)
+    end
+end
+
+function logger.init()
+    if initialized then return end
+    initialized = true
+    ensureDirectory()
 end
 
 function logger.log(level, module, message)
-  local lvl = logger.levels[level] or logger.levels.INFO
-  if lvl < logger.currentLevel then
-    return
-  end
-  append(string.format("[%s] [%s] [%s] %s", now(), level, module or "core", tostring(message)))
+    level = tostring(level or "INFO")
+    module = tostring(module or "CORE")
+    message = tostring(message or "")
+
+    local line = string.format(
+        "%s [%s] [%s] %s",
+        timestamp(),
+        level,
+        module,
+        message
+    )
+
+    writeLine(line)
 end
 
-function logger.debug(module, message) logger.log("DEBUG", module, message) end
-function logger.info(module, message) logger.log("INFO", module, message) end
-function logger.warn(module, message) logger.log("WARN", module, message) end
-function logger.error(module, message) logger.log("ERROR", module, message) end
+function logger.info(module, message)
+    logger.log("INFO", module, message)
+end
 
-function logger.tail(lines)
-  lines = lines or config.logHistoryLines
-  local f = io.open(config.logFile, "r")
-  if not f then return {} end
-  local buf = {}
-  for line in f:lines() do
-    buf[#buf + 1] = line
-  end
-  f:close()
+function logger.warn(module, message)
+    logger.log("WARN", module, message)
+end
 
-  local out = {}
-  local start = math.max(1, #buf - lines + 1)
-  for i = start, #buf do
-    out[#out + 1] = buf[i]
-  end
-  return out
+function logger.error(module, message)
+    logger.log("ERROR", module, message)
+end
+
+function logger.getLines(maxLines)
+    local n = tonumber(maxLines) or 20
+    local result = {}
+    local start = math.max(1, #memory - n + 1)
+
+    for i = start, #memory do
+        table.insert(result, memory[i])
+    end
+
+    return result
+end
+
+function logger.load()
+    ensureDirectory()
+
+    local file = io.open(config.log_file, "r")
+    if not file then return end
+
+    memory = {}
+    for line in file:lines() do
+        table.insert(memory, line)
+        if #memory > 200 then
+            table.remove(memory, 1)
+        end
+    end
+
+    file:close()
 end
 
 return logger
