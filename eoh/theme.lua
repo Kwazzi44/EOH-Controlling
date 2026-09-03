@@ -1,1 +1,1 @@
--- Solarized Dark theme
+-- theme

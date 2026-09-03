@@ -1,1 +1,1 @@
--- Recipes database
+-- recipes

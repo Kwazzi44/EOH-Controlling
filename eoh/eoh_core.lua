@@ -1,1 +1,1 @@
--- EOH Core
+-- EOH core

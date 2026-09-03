@@ -1,1 +1,1 @@
--- HUB registry
+return {}

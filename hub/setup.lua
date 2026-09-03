@@ -1,1 +1,1 @@
--- HUB setup wizard
+-- Hub setup

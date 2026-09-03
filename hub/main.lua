@@ -1,1 +1,2 @@
--- HUB main
+-- Hub main
+local hubconfig = require('config')
