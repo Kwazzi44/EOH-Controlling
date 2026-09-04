@@ -2,17 +2,19 @@
 -- MAIN.LUA - Точка входа EOH Controller
 -- ============================================
 
-package.path = "/home/eoh/?.lua;/home/hub/?.lua;" .. package.path
+package.path = "/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
 
 local term = require("term")
-local logger = dofile("/home/eoh/logger.lua")
+local os = require("os")
+local loggerLib = require("lib.logger")
+local logger = loggerLib.new("/home/eoh", "eoh.log")
+logger:init()
 local settings = require("settings")
 local core = require("eoh_core")
 
 local function main()
-    logger.init()
     settings.load()
-    logger.info("MAIN", "Запуск EOH Controller v1.0")
+    logger:info("MAIN", "Запуск EOH Controller v1.0")
     
     -- Автоматический поиск компонентов
     core.scanComponents()

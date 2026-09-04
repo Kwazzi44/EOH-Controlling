@@ -4,7 +4,9 @@
 
 local filesystem = require("filesystem")
 local serialization = require("serialization")
-local logger = dofile("/home/hub/logger.lua")
+local loggerLib = require("lib.logger")
+local logger = loggerLib.new("/home/hub", "hub.log")
+logger:init()
 
 local REGISTRY = {
     file = "/home/hub/registry.dat",
@@ -21,8 +23,8 @@ function REGISTRY.load()
             local loaded, loadError = serialization.unserialize(data)
             if type(loaded) == "table" then
                 REGISTRY.eohs = loaded
-            elseif logger.warn then
-                logger.warn("REGISTRY", "Registry file was not read: "
+            elseif logger:warn then
+                logger:warn("REGISTRY", "Registry file was not read: "
                     .. tostring(loadError or "invalid data"))
             end
             -- Repair old files that have sparse/missing IDs before callers use
@@ -31,8 +33,8 @@ function REGISTRY.load()
                 eoh.id = i
                 eoh.settings = eoh.settings or {}
             end
-            if logger.info then
-                logger.info("REGISTRY", "Загружено " .. #REGISTRY.eohs .. " EOH")
+            if logger:info then
+                logger:info("REGISTRY", "Загружено " .. #REGISTRY.eohs .. " EOH")
             end
         end
     end
@@ -69,11 +71,11 @@ function REGISTRY.addEOH(name, components, settings)
         }
     }
     local saved = REGISTRY.save()
-    if not saved and logger.error then
-        logger.error("REGISTRY", "Не удалось сохранить новый EOH")
+    if not saved and logger:error then
+        logger:error("REGISTRY", "Не удалось сохранить новый EOH")
     end
-    if logger.info then
-        logger.info("REGISTRY", "Добавлен EOH #" .. id .. " (" .. REGISTRY.eohs[id].name .. ")")
+    if logger:info then
+        logger:info("REGISTRY", "Добавлен EOH #" .. id .. " (" .. REGISTRY.eohs[id].name .. ")")
     end
     return id, saved
 end
@@ -89,11 +91,11 @@ function REGISTRY.updateEOH(index, settings)
         REGISTRY.eohs[index].settings[k] = v
     end
     local saved = REGISTRY.save()
-    if not saved and logger.error then
-        logger.error("REGISTRY", "Не удалось сохранить настройки EOH #" .. index)
+    if not saved and logger:error then
+        logger:error("REGISTRY", "Не удалось сохранить настройки EOH #" .. index)
     end
-    if logger.info then
-        logger.info("REGISTRY", "Обновлен EOH #" .. index)
+    if logger:info then
+        logger:info("REGISTRY", "Обновлен EOH #" .. index)
     end
     return saved
 end

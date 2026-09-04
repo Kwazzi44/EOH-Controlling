@@ -2,18 +2,19 @@
 -- EOH_CORE.LUA - Основная логика работы с EOH
 -- ============================================
 
-package.path = "/home/eoh/?.lua;/home/hub/?.lua;" .. package.path
+package.path = "/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
 
 local component = require("component")
 local computer = require("computer")
 local sides = require("sides")
 local os = require("os")
-local thread = require("thread")
 local config = dofile("/home/eoh/config.lua")
 local recipes = require("recipes")
--- Keep EOH's logger isolated from the HUB logger.  Both programs use the
+-- Keep EOH's logger isolated from the HUB logger:  Both programs use the
 -- same generic module name, and package.path is shared by OpenComputers.
-local logger = dofile("/home/eoh/logger.lua")
+local loggerLib = require("lib.logger")
+local logger = loggerLib.new("/home/eoh", "eoh.log")
+logger:init()
 
 local CORE_BUILD = "20260904-1494"
 
@@ -27,11 +28,9 @@ config.components.transposerPlasmaList = config.components.transposerPlasmaList 
 local runtimeState = {}
 local runtimeCache = {}
 local cycleRunners = {}
-local threadContexts = setmetatable({}, {__mode = "k"})
 
 local function currentComponents()
-    local current = thread.current()
-    return (current and threadContexts[current]) or config.components
+    return config.components
 end
 
 local function setRuntimeState(address, stage, message)
@@ -168,7 +167,7 @@ local function inspectTransposer(address)
 end
 
 function scanComponents(excluded)
-    logger.info("EOH", "Поиск компонентов...")
+    logger:info("EOH", "Поиск компонентов...")
     excluded = excluded or {}
     local found = {
         eoh = nil,
@@ -191,7 +190,7 @@ function scanComponents(excluded)
         if excluded[address] then goto next_machine end
         local okProxy, proxy = pcall(component.proxy, address)
         if not okProxy or not proxy then
-            logger.warn("EOH", "Не удалось получить proxy: " .. address)
+            logger:warn("EOH", "Не удалось получить proxy: " .. address)
         else
             local name = componentName
             if proxy.getMachineName then
@@ -202,11 +201,11 @@ function scanComponents(excluded)
             end
             table.insert(machineAddresses, address)
             table.insert(found.all, {address = address, name = name})
-            logger.debug("EOH", "gt_machine: " .. name .. " [" .. address .. "]")
+            logger:debug("EOH", "gt_machine: " .. name .. " [" .. address .. "]")
             if not config.components.eohController and sensorMarksController(proxy) then
                 config.components.eohController = address
                 found.eoh = address
-                logger.info("EOH", "Найден контроллер EOH: " .. address)
+                logger:info("EOH", "Найден контроллер EOH: " .. address)
             end
         end
         ::next_machine::
@@ -228,11 +227,11 @@ function scanComponents(excluded)
         if ok and details then
             table.insert(found.transposers, details)
             table.insert(found.all, {address = address, name = "transposer"})
-            logger.info("EOH", "Найден транспозер: " .. address
+            logger:info("EOH", "Найден транспозер: " .. address
                 .. ", capacity=" .. tostring(details.capacity)
                 .. ", fluid=" .. tostring(details.fluid or "unknown"))
         else
-            logger.warn("EOH", "Не удалось опросить транспозер: " .. address)
+            logger:warn("EOH", "Не удалось опросить транспозер: " .. address)
         end
         ::next_transposer::
     end
@@ -277,10 +276,10 @@ function scanComponents(excluded)
     if not found.eoh and #machineAddresses == 1 then
         found.eoh = machineAddresses[1]
         config.components.eohController = found.eoh
-        logger.warn("EOH", "Использован единственный gt_machine как контроллер EOH")
+        logger:warn("EOH", "Использован единственный gt_machine как контроллер EOH")
     end
     if not config.components.eohController then
-        logger.error("EOH", "Контроллер EOH не найден!")
+        logger:error("EOH", "Контроллер EOH не найден!")
     end
     return found
 end
@@ -455,7 +454,7 @@ local function supplyFluidFromList(transposerAddresses, fluidName, amount)
     local components = currentComponents()
     if amount <= 0 then return true, nil end
     if not transposerAddresses or #transposerAddresses == 0 then
-        logger.error("EOH", "Транспозеры для " .. fluidName .. " не найдены!")
+        logger:error("EOH", "Транспозеры для " .. fluidName .. " не найдены!")
         return false, "transposer not found"
     end
     local remaining = amount
@@ -477,7 +476,7 @@ local function supplyFluidFromList(transposerAddresses, fluidName, amount)
             remaining = remaining - transferredAmount
         else
             lastError = tostring(err)
-            logger.warn("EOH", "Транспозер " .. tostring(address)
+            logger:warn("EOH", "Транспозер " .. tostring(address)
                 .. " не передал " .. fluidName .. ": " .. tostring(err))
         end
     end
@@ -500,13 +499,13 @@ end
 function supplyFluid(transposerAddr, fluidName, amount)
     local components = currentComponents()
     if not transposerAddr then
-        logger.error("EOH", "Транспозер для " .. fluidName .. " не найден!")
+        logger:error("EOH", "Транспозер для " .. fluidName .. " не найден!")
         return false, "transposer not found"
     end
     if amount <= 0 then return true end
     local okProxy, transposer = pcall(component.proxy, transposerAddr)
     if not okProxy or not transposer then
-        logger.error("EOH", "Транспозер недоступен: " .. tostring(transposerAddr))
+        logger:error("EOH", "Транспозер недоступен: " .. tostring(transposerAddr))
         return false, "transposer unavailable"
     end
     local defaultSource = sides[config.transposer.sourceSide] or sides.north
@@ -552,14 +551,14 @@ function supplyFluid(transposerAddr, fluidName, amount)
             end
         end
         if #sources > 0 then
-            logger.warn("EOH", "Fluid name unavailable for " .. fluidName
+            logger:warn("EOH", "Fluid name unavailable for " .. fluidName
                 .. "; using non-empty bound transposer sides")
         else
             return false, fluidName .. " tank not detected on transposer"
         end
     end
     local targets = {defaultTarget}
-    logger.info("EOH", "TRANSFER " .. fluidName .. " addr=" .. transposerAddr
+    logger:info("EOH", "TRANSFER " .. fluidName .. " addr=" .. transposerAddr
         .. " sources=" .. table.concat(sources, ",")
         .. " target=" .. tostring(defaultTarget)
         .. " requested=" .. tostring(amount))
@@ -589,7 +588,7 @@ function supplyFluid(transposerAddr, fluidName, amount)
                     local okTransfer, value, transferError =
                         pcall(component.invoke, transposerAddr, "transferFluid",
                             source, target, transferAmount)
-                    logger.info("EOH", "TRANSFER_RESULT " .. fluidName
+                    logger:info("EOH", "TRANSFER_RESULT " .. fluidName
                         .. " source=" .. tostring(source)
                         .. " target=" .. tostring(target)
                         .. " amount=" .. tostring(transferAmount)
@@ -615,7 +614,7 @@ function supplyFluid(transposerAddr, fluidName, amount)
                         local targetDelta = targetBefore and targetAfter
                             and targetAfter - targetBefore or 0
                         transferred = math.max(sourceDelta, targetDelta, 0)
-                        logger.info("EOH", "TRANSFER_LEVELS sourceAfter="
+                        logger:info("EOH", "TRANSFER_LEVELS sourceAfter="
                             .. tostring(sourceAfter) .. " targetAfter="
                             .. tostring(targetAfter) .. " moved="
                             .. tostring(transferred))
@@ -640,19 +639,19 @@ function supplyFluid(transposerAddr, fluidName, amount)
         if transferred <= 0 then
             stalledAttempts = stalledAttempts + 1
             if stalledAttempts > 120 then
-                logger.error("EOH", "Не удалось передать " .. fluidName
+                logger:error("EOH", "Не удалось передать " .. fluidName
                     .. " (" .. lastError .. "), осталось "
                     .. tostring(remaining) .. "L")
                 return false, lastError
             end
-            logger.debug("EOH", "Transfer paused for " .. fluidName
+            logger:debug("EOH", "Transfer paused for " .. fluidName
                 .. "; waiting for target space (attempt "
                 .. tostring(stalledAttempts) .. ")")
             os.sleep(0.5)
         else
             stalledAttempts = 0
             remaining = remaining - transferred
-            logger.info("EOH", "Передано " .. fluidName .. ": " .. transferred .. "L")
+            logger:info("EOH", "Передано " .. fluidName .. ": " .. transferred .. "L")
             if remaining > 0 then os.sleep(0.05) end
         end
     end
@@ -669,10 +668,10 @@ end
 
 function startRecipe(tier, useAA, overclocks)
     local components = currentComponents()
-    logger.info("EOH", "Запуск рецепта: тир " .. tier .. ", AA: " .. tostring(useAA))
+    logger:info("EOH", "Запуск рецепта: тир " .. tier .. ", AA: " .. tostring(useAA))
     local recipe = recipes.get(tier)
     if not recipe then
-        logger.error("EOH", "Неизвестный тир: " .. tier)
+        logger:error("EOH", "Неизвестный тир: " .. tier)
         return false, "Неизвестный тир"
     end
     if not components.eohController and not components.eoh then
@@ -680,7 +679,7 @@ function startRecipe(tier, useAA, overclocks)
     end
     local status = getStatus()
     if status.active then
-        logger.warn("EOH", "EOH уже работает")
+        logger:warn("EOH", "EOH уже работает")
         return false, "EOH already active"
     end
     local required = {hydrogen = 0, helium = 0, plasma = 0}
@@ -688,7 +687,7 @@ function startRecipe(tier, useAA, overclocks)
         required.plasma = recipe.plasma
         if not components.transposerPlasma
             and #(components.transposerPlasmaList or {}) == 0 then
-            logger.error("EOH", "Транспозер для плазмы не найден!")
+            logger:error("EOH", "Транспозер для плазмы не найден!")
             return false, "Plasma transposer not found"
         end
     else
@@ -696,7 +695,7 @@ function startRecipe(tier, useAA, overclocks)
         required.helium = recipe.helium
         if not components.transposerHydrogen and not components.transposerH2
             or not components.transposerHelium and not components.transposerHe then
-            logger.error("EOH", "Транспозеры для H2/He не найдены!")
+            logger:error("EOH", "Транспозеры для H2/He не найдены!")
             return false, "H2/He transposers not found"
         end
     end
@@ -708,7 +707,7 @@ function startRecipe(tier, useAA, overclocks)
     if exceedsRequirement(status.hydrogen, required.hydrogen)
         or exceedsRequirement(status.helium, required.helium)
         or exceedsRequirement(status.plasma, required.plasma) then
-        logger.warn("EOH", "EOH already contains excess fluid; "
+        logger:warn("EOH", "EOH already contains excess fluid; "
             .. "skipping refill and starting with stored input")
     end
     local controllerAddress = components.eoh or components.eohController
@@ -726,43 +725,28 @@ function startRecipe(tier, useAA, overclocks)
             end
         end
     else
-        local jobs = {}
-        local results = {}
+        -- Sequential fluid supply (thread module not available in OpenComputers)
         local function queueSupply(name, address, amount)
-            if amount <= 0 then return end
-            jobs[#jobs + 1] = thread.create(function()
-                local owner = thread.current()
-                threadContexts[owner] = components
-                local ok, err = supplyFluid(address, name, amount)
-                results[#results + 1] = {name = name, ok = ok, error = err}
-                threadContexts[owner] = nil
-            end)
-        end
-        queueSupply("Hydrogen", components.transposerHydrogen or components.transposerH2,
-            required.hydrogen - (status.hydrogen or 0))
-        queueSupply("Helium", components.transposerHelium or components.transposerHe,
-            required.helium - (status.helium or 0))
-        if #jobs > 0 then
-            local joined, joinError = thread.waitForAll(jobs)
-            if not joined then
-                success = false
-                supplyError = joinError
-            else
-                for _, result in ipairs(results) do
-                    if not result.ok then
-                        success = false
-                        supplyError = result.name .. ": "
-                            .. tostring(result.error)
-                        break
-                    end
-                end
+            if amount <= 0 then return true end
+            local ok, err = supplyFluid(address, name, amount)
+            if not ok then
+                return false, name .. ": " .. tostring(err)
             end
+            return true
+        end
+        local ok, err = queueSupply("Hydrogen", components.transposerHydrogen or components.transposerH2,
+            required.hydrogen - (status.hydrogen or 0))
+        if not ok then success, supplyError = false, err end
+        if success then
+            ok, err = queueSupply("Helium", components.transposerHelium or components.transposerHe,
+                required.helium - (status.helium or 0))
+            if not ok then success, supplyError = false, err end
         end
     end
     if not success then
         setRuntimeState(controllerAddress, "ERROR",
             "Reagent transfer failed: " .. tostring(supplyError))
-        logger.error("EOH", "Ошибка подачи жидкости")
+        logger:error("EOH", "Ошибка подачи жидкости")
         if supplyError == nil or supplyError == ""
             or tostring(supplyError) == "0" then
             supplyError = "transfer returned zero; source tank or target side is unavailable"
@@ -790,7 +774,7 @@ function startRecipe(tier, useAA, overclocks)
         end
     end
     if overflow then
-        logger.warn("EOH", "EOH contains excess fluid after supply; "
+        logger:warn("EOH", "EOH contains excess fluid after supply; "
             .. "starting with stored input")
     end
     local okController, controller = pcall(component.proxy,
@@ -807,10 +791,10 @@ function startRecipe(tier, useAA, overclocks)
     if not started then
         setRuntimeState(controllerAddress, "ERROR",
             "Controller did not accept start")
-        logger.error("EOH", "У контроллера нет метода запуска")
+        logger:error("EOH", "У контроллера нет метода запуска")
         return false, "EOH start method not found"
     end
-    logger.info("EOH", "Рецепт запущен")
+    logger:info("EOH", "Рецепт запущен")
     setRuntimeState(controllerAddress, "STARTING",
         "Waiting for EOH to start")
     return true
@@ -821,19 +805,19 @@ end
 -- ============================================
 
 function runProductionMode(tier, useAA, overclocks, autoRestart)
-    logger.info("EOH", "Production Mode: тир " .. tier)
+    logger:info("EOH", "Production Mode: тир " .. tier)
     while true do
         local success, err = startRecipe(tier, useAA, overclocks)
         if success then
             local completed, completionError = waitForCompletion()
             if not completed then
-                logger.error("EOH", "Completion wait failed: "
+                logger:error("EOH", "Completion wait failed: "
                     .. tostring(completionError))
                 break
             end
-            logger.info("EOH", "Цикл завершен")
+            logger:info("EOH", "Цикл завершен")
         else
-            logger.error("EOH", "Ошибка: " .. tostring(err))
+            logger:error("EOH", "Ошибка: " .. tostring(err))
             break
         end
         if not autoRestart then break end
@@ -841,23 +825,23 @@ function runProductionMode(tier, useAA, overclocks, autoRestart)
 end
 
 function runPowerMode(autoRestart)
-    logger.info("EOH", "Power Mode: Deep Dark T9")
+    logger:info("EOH", "Power Mode: Deep Dark T9")
     if autoRestart == nil then
         autoRestart = config.defaults.autoRestart
     end
     while true do
         local success, err = startRecipe(9, false, 0)
         if not success then
-            logger.error("EOH", "Ошибка: " .. tostring(err))
+            logger:error("EOH", "Ошибка: " .. tostring(err))
             break
         end
         local completed, completionError = waitForCompletion()
         if not completed then
-            logger.error("EOH", "Completion wait failed: "
+            logger:error("EOH", "Completion wait failed: "
                 .. tostring(completionError))
             break
         end
-        logger.info("EOH", "Цикл генерации завершен")
+        logger:info("EOH", "Цикл генерации завершен")
         if not autoRestart then break end
     end
 end
@@ -881,8 +865,8 @@ function startConfiguredCycle(components, settings)
         cycleRunners[address] = nil
     end
 
-    local runner = thread.create(function()
-        threadContexts[thread.current()] = components
+    -- Create a coroutine-based runner (thread module not available in OpenComputers)
+    local co = coroutine.create(function()
         local ok, err = pcall(function()
             -- When Setup is run during an active recipe, first wait for that
             -- recipe to finish, then take over its automatic restart.
@@ -900,18 +884,46 @@ function startConfiguredCycle(components, settings)
         end)
         if not ok then
             setRuntimeState(address, "ERROR", tostring(err))
-            logger.error("EOH", "Recipe cycle failed: " .. tostring(err))
+            logger:error("EOH", "Recipe cycle failed: " .. tostring(err))
         end
-        threadContexts[thread.current()] = nil
-        cycleRunners[address] = nil
     end)
+    
+    -- Store runner info with coroutine reference
+    local runner = {
+        coroutine = co,
+        status = function(self)
+            if coroutine.status(self.coroutine) == "dead" then
+                return "stopped"
+            elseif coroutine.status(self.coroutine) == "suspended" then
+                return "running"
+            else
+                return "running"
+            end
+        end,
+        resume = function(self)
+            if coroutine.status(self.coroutine) ~= "dead" then
+                local ok, err = coroutine.resume(self.coroutine)
+                if not ok then
+                    setRuntimeState(address, "ERROR", tostring(err))
+                    logger:error("EOH", "Runner error: " .. tostring(err))
+                    return false, err
+                end
+                return true
+            end
+            return false, "coroutine dead"
+        end
+    }
+    
+    -- Start the coroutine
+    coroutine.resume(co)
+    
     cycleRunners[address] = runner
     return true, "Recipe cycle started"
 end
 
 function waitForCompletion()
     local components = currentComponents()
-    logger.info("EOH", "Ожидание завершения...")
+    logger:info("EOH", "Ожидание завершения...")
     local started = false
     for _ = 1, 10 do
         local status = getStatus()
@@ -931,7 +943,7 @@ function waitForCompletion()
         if not status.active then break end
         os.sleep(1)
     end
-    logger.info("EOH", "Recipe completed")
+    logger:info("EOH", "Recipe completed")
     setRuntimeState(components.eoh or components.eohController, "READY", "Ready")
     return true
 end
