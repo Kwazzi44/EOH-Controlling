@@ -10,7 +10,6 @@ local keyboard = require("keyboard")
 local computer = require("computer")
 local os = require("os")
 local filesystem = require("filesystem")
-local thread = require("thread")
 
 -- ============================================
 -- ПРОВЕРКА НАЛИЧИЯ МОДУЛЕЙ
@@ -41,7 +40,9 @@ end
 local config = dofile("/home/hub/config.lua")
 local registry = require("registry")
 local setup = require("setup")
-local logger = dofile("/home/hub/logger.lua")
+local loggerLib = require("lib.logger")
+local logger = loggerLib.new("/home/hub", "hub.log")
+logger:init()
 local core = require("eoh_core")
 local gui = require("gui")
 gui.init()
@@ -223,7 +224,6 @@ end
 -- ============================================
 
 function main()
-    logger.init()
     registry.load()
     -- AUTO must survive a computer/HUB restart.  Setup also calls this helper
     -- after rebinding hardware; the core rejects a duplicate runner.
@@ -259,7 +259,7 @@ function main()
         elseif isKey(keyCode, keyboard.keys.f3, 61) then
             registry.load()
         elseif char == "q" or char == "Q" then
-            logger.info("MAIN", "Выход из программы")
+            logger:info("MAIN", "Выход из программы")
             break
         end
     end
