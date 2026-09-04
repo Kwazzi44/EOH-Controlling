@@ -1,67 +1,84 @@
-local config = require("config")
+-- ============================================
+-- LOGGER.LUA - Система логирования
+-- ============================================
+
 local filesystem = require("filesystem")
+local os = require("os")
 
-local logger = {}
-local buffer = {}
-local ready = false
+local LOG = {
+    buffer = {},
+    path = "/home/eoh/logs/eoh.log",
+    maxSize = 1024 * 1024,
+    maxFiles = 5,
+}
 
-local function ensureDirectory()
-    local dir = filesystem.path(config.log_file)
-    if dir and not filesystem.exists(dir) then filesystem.makeDirectory(dir) end
-end
-
-local function rotate()
-    if not filesystem.exists(config.log_file) then return end
-    local size = filesystem.size(config.log_file) or 0
-    if size < (config.log_max_bytes or 1048576) then return end
-    local old = config.log_file .. ".1"
-    pcall(filesystem.remove, old)
-    pcall(filesystem.rename, config.log_file, old)
-end
-
-local function timestamp()
-    local t = os.date("*t")
-    return string.format("[%04d-%02d-%02d %02d:%02d:%02d]", t.year,t.month,t.day,t.hour,t.min,t.sec)
-end
-
-function logger.init()
-    if ready then return end
-    ready = true
-    ensureDirectory()
-end
-
-function logger.log(level, module, message)
-    logger.init()
-    local line = string.format("%s [%s] [%s] %s", timestamp(), tostring(level), tostring(module), tostring(message))
-    rotate()
-    local f = io.open(config.log_file, "a")
-    if f then f:write(line, "\n"); f:close() end
-    table.insert(buffer, line)
-    while #buffer > 400 do table.remove(buffer, 1) end
-end
-
-function logger.info(m, s) logger.log("INFO",m,s) end
-function logger.warn(m, s) logger.log("WARN",m,s) end
-function logger.error(m, s) logger.log("ERROR",m,s) end
-
-function logger.load()
-    logger.init()
-    local f = io.open(config.log_file, "r")
-    if not f then return end
-    buffer = {}
-    for line in f:lines() do
-        table.insert(buffer,line)
-        if #buffer > 400 then table.remove(buffer,1) end
+function LOG.init()
+    if not filesystem.exists("/home/eoh/logs/") then
+        filesystem.makeDirectory("/home/eoh/logs/")
     end
-    f:close()
 end
 
-function logger.getLines(n)
-    n = tonumber(n) or 18
-    local out = {}
-    local start = math.max(1,#buffer-n+1)
-    for i=start,#buffer do table.insert(out,buffer[i]) end
-    return out
+function LOG.write(level, module, message)
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    local entry = string.format("[%s] [%s] [%s] %s", timestamp, level, module, message)
+    table.insert(LOG.buffer, entry)
+    if #LOG.buffer >= 100 then
+        LOG.flush()
+    end
 end
 
-return logger
+function LOG.info(module, message) LOG.write("INFO", module, message) end
+function LOG.warn(module, message) LOG.write("WARN", module, message) end
+function LOG.error(module, message) LOG.write("ERROR", module, message) end
+function LOG.debug(module, message) LOG.write("DEBUG", module, message) end
+
+function LOG.flush()
+    if #LOG.buffer == 0 then return end
+    local file = io.open(LOG.path, "a")
+    if file then
+        file:write(table.concat(LOG.buffer, "\n") .. "\n")
+        file:close()
+        LOG.buffer = {}
+    end
+    if filesystem.exists(LOG.path) then
+        local size = filesystem.size(LOG.path)
+        if size > LOG.maxSize then
+            LOG.rotate()
+        end
+    end
+end
+
+function LOG.rotate()
+    for i = LOG.maxFiles - 1, 1, -1 do
+        local old = LOG.path .. "." .. i
+        local new = LOG.path .. "." .. (i + 1)
+        if filesystem.exists(old) then
+            filesystem.rename(old, new)
+        end
+    end
+    if filesystem.exists(LOG.path) then
+        filesystem.rename(LOG.path, LOG.path .. ".1")
+    end
+end
+
+function LOG.getRecentLines(n)
+    n = n or 50
+    local lines = {}
+    if filesystem.exists(LOG.path) then
+        local file = io.open(LOG.path, "r")
+        if file then
+            local allLines = {}
+            for line in file:lines() do
+                table.insert(allLines, line)
+            end
+            file:close()
+            local start = math.max(1, #allLines - n + 1)
+            for i = start, #allLines do
+                table.insert(lines, allLines[i])
+            end
+        end
+    end
+    return lines
+end
+
+return LOG

@@ -1,3 +1,10 @@
--- EOH Controller autorun
+-- ============================================
+-- AUTORUN.LUA - Автозапуск EOH Controller
+-- ============================================
+
 local shell = require("shell")
-shell.execute("/home/hub/main.lua")
+local term = require("term")
+
+term.clear()
+print("Запуск EOH Controller...")
+shell.execute("lua /home/hub/main.lua")
