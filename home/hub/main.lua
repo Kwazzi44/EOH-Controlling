@@ -16,11 +16,16 @@ local filesystem = require("filesystem")
 -- ============================================
 
 local function checkModules()
-    local modules = {"registry", "setup", "logger"}
+    local modules = {
+        {name="registry", path="/home/hub/registry.lua"},
+        {name="setup", path="/home/hub/setup.lua"},
+        {name="logger", path="/home/lib/logger.lua"},
+        {name="eoh_core", path="/home/eoh/eoh_core.lua"},
+        {name="gui", path="/home/hub/gui.lua"},
+    }
     for _, mod in ipairs(modules) do
-        local path = "/home/hub/" .. mod .. ".lua"
-        if not filesystem.exists(path) then
-            print("❌ Ошибка: файл " .. path .. " не найден!")
+        if not filesystem.exists(mod.path) then
+            print("❌ Ошибка: файл " .. mod.path .. " не найден!")
             print("Убедитесь, что все файлы установлены.")
             os.sleep(3)
             return false
@@ -280,9 +285,10 @@ if not ok then
     print("")
     print("📖 Проверьте:")
     print("  1. Все файлы установлены в /home/hub/")
-    print("  2. Файл /home/hub/logger.lua существует")
+    print("  2. Файл /home/lib/logger.lua существует")
     print("  3. Файл /home/hub/registry.lua существует")
     print("  4. Файл /home/hub/setup.lua существует")
+    print("  5. Файл /home/eoh/eoh_core.lua существует")
     print("")
     print("Программа остановлена через 10 секунд...")
     os.sleep(10)

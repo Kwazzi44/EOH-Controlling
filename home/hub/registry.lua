@@ -16,27 +16,37 @@ local REGISTRY = {
 function REGISTRY.load()
     REGISTRY.eohs = {}
     if filesystem.exists(REGISTRY.file) then
-        local f = io.open(REGISTRY.file, "r")
-        if f then
-            local data = f:read("*all")
+        local content = ""
+        local result, reason = pcall(function()
+            local f = io.open(REGISTRY.file, "r")
+            if not f then
+                return nil
+            end
+            content = f:read("*all")
             f:close()
-            local loaded, loadError = serialization.unserialize(data)
-            if type(loaded) == "table" then
-                REGISTRY.eohs = loaded
-            elseif logger:warn then
-                logger:warn("REGISTRY", "Registry file was not read: "
-                    .. tostring(loadError or "invalid data"))
-            end
-            -- Repair old files that have sparse/missing IDs before callers use
-            -- numeric selection indexes.
-            for i, eoh in ipairs(REGISTRY.eohs) do
-                eoh.id = i
-                eoh.settings = eoh.settings or {}
-            end
-            if logger:info then
-                logger:info("REGISTRY", "Загружено " .. #REGISTRY.eohs .. " EOH")
-            end
+            return true
+        end)
+
+        if not result or content == "" then
+            logger:warn("REGISTRY", "Registry file missing or empty. Starting fresh.")
+            return REGISTRY.eohs
         end
+
+        local loaded, loadError = serialization.unserialize(content)
+        if type(loaded) ~= "table" then
+            logger:warn("REGISTRY", "Registry file was not read: "
+                .. tostring(loadError or "invalid data"))
+            return REGISTRY.eohs
+        end
+        REGISTRY.eohs = loaded
+
+        -- Repair old files that have sparse/missing IDs before callers use
+        -- numeric selection indexes.
+        for i, eoh in ipairs(REGISTRY.eohs) do
+            eoh.id = i
+            eoh.settings = eoh.settings or {}
+        end
+        logger:info("REGISTRY", "Загружено " .. #REGISTRY.eohs .. " EOH")
     end
     return REGISTRY.eohs
 end
