@@ -2,7 +2,7 @@
 -- MAIN.LUA - Точка входа HUB
 -- ============================================
 
-package.path = "/home/eoh/?.lua;/home/hub/?.lua;" .. package.path
+package.path = "/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
 
 local term = require("term")
 local event = require("event")

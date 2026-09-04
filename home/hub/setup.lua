@@ -2,13 +2,15 @@
 -- SETUP.LUA - Настройка и регистрация EOH
 -- ============================================
 
-package.path = "/home/eoh/?.lua;/home/hub/?.lua;" .. package.path
+package.path = "/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
 
 local term = require("term")
 local event = require("event")
 local component = require("component")
 local registry = require("registry")
-local logger = dofile("/home/hub/logger.lua")
+local loggerLib = require("lib.logger")
+local logger = loggerLib.new("/home/hub", "hub.log")
+logger:init()
 local filesystem = require("filesystem")
 
 -- Проверяем наличие eoh_core

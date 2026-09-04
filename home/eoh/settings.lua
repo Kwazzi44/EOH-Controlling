@@ -2,7 +2,7 @@
 -- SETTINGS.LUA - Управление настройками
 -- ============================================
 
-package.path = "/home/eoh/?.lua;/home/hub/?.lua;" .. package.path
+package.path = "/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
 
 local filesystem = require("filesystem")
 local serialization = require("serialization")
@@ -16,16 +16,21 @@ local SETTINGS = {
 
 function SETTINGS.load()
     if filesystem.exists(SETTINGS.file) then
-        local f = io.open(SETTINGS.file, "r")
+        local f, openErr = io.open(SETTINGS.file, "r")
         if f then
             local data = f:read("*all")
             f:close()
-            local saved = serialization.unserialize(data)
-            if saved then
+            local ok, saved = pcall(serialization.unserialize, data)
+            if ok and saved then
                 for k, v in pairs(saved) do
                     config.defaults[k] = v
                 end
+            else
+                print("⚠️  Ошибка загрузки конфига: " .. tostring(saved or openErr))
+                print("   Будут использованы настройки по умолчанию.")
             end
+        else
+            print("⚠️  Не удалось открыть файл конфига: " .. tostring(openErr))
         end
     end
 end
