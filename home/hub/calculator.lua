@@ -2,7 +2,7 @@
 -- CALCULATOR.LUA - Калькулятор рецептов
 -- ============================================
 
-package.path = "/home/eoh/?.lua;/home/hub/?.lua;" .. package.path
+package.path = "/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
 
 local recipes = require("recipes")
 local core = require("eoh_core")

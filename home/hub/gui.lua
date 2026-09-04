@@ -81,7 +81,7 @@ function gui.drawDetail(eoh, notice, runtime)
     theme.gset(3, 14, "STAGE: " .. stage .. "   PROGRESS: "
         .. progressText(runtime), stageColor[stage] or C.unknown, C.bg)
     theme.gset(3, 15, runtime.message or "", C.dim, C.bg)
-    theme.gset(3, 16, "CORE BUILD: 20260904-1493", C.dim, C.bg)
+    theme.gset(3, 16, "CORE BUILD: 20260904-1494", C.dim, C.bg)
     if notice then
         theme.gset(3, 18, tostring(notice):sub(1, width - 5), C.warn, C.bg)
     end

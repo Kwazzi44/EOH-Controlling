@@ -49,7 +49,8 @@ end
 function install()
     term.clear()
     print("╔════════════════════════════════════════════════════════════════╗")
-    print("║              УСТАНОВКА EOH CONTROLLER                       ║")
+    print("║           УСТАНОВКА EOH CONTROLLER v2.0                      ║")
+    print("║        Модульная система с общим логгером                    ║")
     print("╚════════════════════════════════════════════════════════════════╝")
     print("")
     
@@ -83,27 +84,31 @@ function install()
     
     -- Список файлов для скачивания
     local files = {
+        -- EOH Controller files
         "/home/eoh/config.lua",
         "/home/eoh/eoh_config.lua",
         "/home/eoh/eoh_core.lua",
         "/home/eoh/diagnose.lua",
-        "/home/eoh/logger.lua",
         "/home/eoh/main.lua",
         "/home/eoh/recipes.lua",
         "/home/eoh/settings.lua",
         "/home/eoh/theme.lua",
+        -- HUB files
         "/home/hub/calculator.lua",
         "/home/hub/config.lua",
         "/home/hub/theme.lua",
         "/home/hub/main.lua",
         "/home/hub/gui.lua",
-        "/home/hub/logger.lua",
         "/home/hub/registry.lua",
         "/home/hub/setup.lua",
+        -- Shared library
+        "/home/lib/logger.lua",
+        -- Root files
         "/autorun.lua",
         "/U.lua",
         "/update_manifest.lua",
         "/README.md",
+        "/init.lua",
     }
     
     -- Скачиваем файлы
@@ -143,7 +148,14 @@ function install()
     end
     
     print("✅ Установка завершена!")
-    print("Запустите: lua /home/hub/main.lua")
+    print("")
+    print("📖 Как использовать:")
+    print("  • Запуск HUB: lua /home/hub/main.lua")
+    print("  • Запуск EOH (один): lua /home/eoh/main.lua")
+    print("  • Обновление: lua /U.lua")
+    print("")
+    print("⚙️  Файлы logger.lua перемещены в /home/lib/")
+    print("   EOH и HUB теперь используют общий модуль.")
     print("")
     print("Перезагрузка через 5 секунд...")
     os.sleep(5)

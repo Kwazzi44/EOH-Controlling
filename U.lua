@@ -62,8 +62,14 @@ function update()
     print("")
     os.sleep(2)
     
-    -- Запускаем новый установщик
-    os.execute("lua " .. tempFile)
+    -- Запускаем новый установщик через dofile (безопаснее os.execute)
+    local ok, err = pcall(dofile, tempFile)
+    if not ok then
+        print("❌ Ошибка при запуске установщика: " .. tostring(err))
+        print("Попробуйте перезагрузить компьютер и запустить вручную:")
+        print("  lua " .. tempFile)
+        os.sleep(5)
+    end
 end
 
 -- ============================================
