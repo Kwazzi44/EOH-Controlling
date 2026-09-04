@@ -2,9 +2,10 @@
 -- MAIN.LUA - Точка входа EOH Controller
 -- ============================================
 
+package.path = "/home/eoh/?.lua;/home/hub/?.lua;" .. package.path
+
 local term = require("term")
-local gui = require("gui")
-local logger = require("logger")
+local logger = dofile("/home/eoh/logger.lua")
 local settings = require("settings")
 local core = require("eoh_core")
 
@@ -16,15 +17,12 @@ local function main()
     -- Автоматический поиск компонентов
     core.scanComponents()
     
-    -- Запуск GUI (если есть файл gui.lua)
-    if gui.run then
-        gui.run()
-    else
-        -- Простой режим без GUI
+        -- Текстовый режим используется без отдельного GUI-модуля.
         print("EOH Controller запущен")
         print("Нажмите:")
         print("  1 - Production Mode")
-        print("  2 - Power Mode")
+        print("  2 - Production Mode + Astral Arrays")
+        print("  3 - Deep Dark Energy Mode")
         print("  Q - Выход")
         
         while true do
@@ -32,15 +30,21 @@ local function main()
             if input == "1" then
                 core.runProductionMode(
                     settings.get("tier"),
-                    settings.get("useAA"),
+                    false,
                     settings.get("overclocks"),
                     settings.get("autoRestart")
                 )
             elseif input == "2" then
+                core.runProductionMode(
+                    settings.get("tier"),
+                    true,
+                    settings.get("overclocks"),
+                    settings.get("autoRestart")
+                )
+            elseif input == "3" then
                 core.runPowerMode()
             elseif input == "q" or input == "Q" then
                 break
-            end
         end
     end
 end

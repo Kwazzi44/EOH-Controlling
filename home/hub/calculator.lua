@@ -2,6 +2,8 @@
 -- CALCULATOR.LUA - Калькулятор рецептов
 -- ============================================
 
+package.path = "/home/eoh/?.lua;/home/hub/?.lua;" .. package.path
+
 local recipes = require("recipes")
 local core = require("eoh_core")
 
@@ -10,13 +12,12 @@ function calculateRecipe(tier, useAA, overclocks)
     if not recipe then
         return nil, "Неизвестный тир"
     end
-    local multiplier = 2 ^ (overclocks or 0)
     local result = {
         planet = recipe.planet,
         starMatter = recipe.starMatter,
-        hydrogen = useAA and 0 or recipe.hydrogen * multiplier,
-        helium = useAA and 0 or recipe.helium * multiplier,
-        plasma = useAA and recipe.plasma * multiplier or 0,
+        hydrogen = useAA and 0 or recipe.hydrogen,
+        helium = useAA and 0 or recipe.helium,
+        plasma = useAA and recipe.plasma or 0,
         duration = recipe.duration,
     }
     return result

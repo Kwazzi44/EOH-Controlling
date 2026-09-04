@@ -1,20 +1,37 @@
 -- ============================================
--- U.LUA - Обновление EOH Controller
+-- U.LUA - Загрузчик обновлений
+-- Загружает свежий install_eoh.lua и запускает его
 -- ============================================
 
-local filesystem = require("filesystem")
 local internet = require("internet")
 local os = require("os")
 local term = require("term")
+local filesystem = require("filesystem")
 
 local REPO = "https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling/main"
 
-function downloadFile(url, path)
+function update()
+    term.clear()
+    print("╔════════════════════════════════════════════════════════════════╗")
+    print("║              ЗАГРУЗКА ОБНОВЛЕНИЙ                             ║")
+    print("╚════════════════════════════════════════════════════════════════╝")
+    print("")
+    print("📥 Загрузка нового установщика...")
+    
+    -- Скачиваем новый install_eoh.lua
+    local url = REPO .. "/install_eoh.lua"
     local req = internet.request(url)
+    
     if not req then
-        return false, "Не удалось создать запрос"
+        print("❌ Ошибка: не удалось подключиться к репозиторию")
+        print("Проверьте подключение к интернету.")
+        print("")
+        print("Нажмите любую клавишу для выхода...")
+        os.sleep(5)
+        return
     end
     
+    -- Читаем данные
     local data = ""
     while true do
         local chunk = req.read()
@@ -23,47 +40,47 @@ function downloadFile(url, path)
     end
     
     if data == "" then
-        return false, "Получен пустой файл"
-    end
-    
-    local file = io.open(path, "w")
-    if not file then
-        return false, "Не удалось создать файл: " .. path
-    end
-    file:write(data)
-    file:close()
-    
-    return true, "OK"
-end
-
-function update()
-    term.clear()
-    print("╔════════════════════════════════════════════════════════════════╗")
-    print("║              ОБНОВЛЕНИЕ EOH CONTROLLER                       ║")
-    print("╚════════════════════════════════════════════════════════════════╝")
-    print("")
-    
-    print("📥 Загрузка нового установщика...")
-    local success, err = downloadFile(REPO .. "/install_eoh.lua", "/temp_install.lua")
-    
-    if not success then
-        print("❌ Ошибка: " .. tostring(err))
-        print("Нажмите любую клавишу для выхода...")
+        print("❌ Ошибка: получен пустой файл")
         os.sleep(5)
         return
     end
     
+    -- Сохраняем новый установщик как временный файл
+    local tempFile = "/temp_install.lua"
+    local f = io.open(tempFile, "w")
+    if not f then
+        print("❌ Ошибка: не удалось создать временный файл")
+        os.sleep(5)
+        return
+    end
+    f:write(data)
+    f:close()
+    
     print("✅ Новый установщик загружен")
     print("")
     print("🚀 Запуск установки...")
+    print("")
     os.sleep(2)
     
-    os.execute("lua /temp_install.lua")
+    -- Запускаем новый установщик
+    os.execute("lua " .. tempFile)
 end
+
+-- ============================================
+-- ЗАПУСК
+-- ============================================
 
 local ok, err = pcall(update)
 if not ok then
     term.clear()
-    print("❌ Ошибка обновления: " .. tostring(err))
-    os.sleep(5)
+    print("╔════════════════════════════════════════════════════════════════╗")
+    print("║                    ОШИБКА ОБНОВЛЕНИЯ                         ║")
+    print("╚════════════════════════════════════════════════════════════════╝")
+    print("")
+    print("❌ " .. tostring(err))
+    print("")
+    print("📖 Проверьте подключение к интернету")
+    print("")
+    print("Нажмите любую клавишу для выхода...")
+    os.sleep(10)
 end

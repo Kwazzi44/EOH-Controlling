@@ -22,9 +22,7 @@ function LOG.write(level, module, message)
     local timestamp = os.date("%Y-%m-%d %H:%M:%S")
     local entry = string.format("[%s] [%s] [%s] %s", timestamp, level, module, message)
     table.insert(LOG.buffer, entry)
-    if #LOG.buffer >= 100 then
-        LOG.flush()
-    end
+    LOG.flush()
 end
 
 function LOG.info(module, message) LOG.write("INFO", module, message) end

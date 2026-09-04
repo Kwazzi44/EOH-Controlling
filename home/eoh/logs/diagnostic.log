@@ -1,0 +1,120 @@
+=== EOH FULL DIAGNOSTIC ===
+timestamp unavailable (OpenComputers runtime)
+diagnostic version: 2
+component.isAvailable(gpu)=true
+component.isAvailable(gt_machine)=true
+component.isAvailable(transposer)=true
+
+GT_MACHINE COMPONENTS
+
+COMPONENT gt_machine [d80ef108-4099-4350-9e29-6366ba31c7ea]
+  proxy type: table
+  methods: getAverageElectricInput, getAverageElectricOutput, getCoordinates, getEUCapacity, getEUCapacityString, getEUInputAverage, getEUMaxStored, getEUOutputAverage, getEUStored, getInputVoltage, getName, getOutputAmperage, getOutputVoltage, getOwnerName, getParameters, getSensorInformation, getSteamCapacity, getSteamMaxStored, getSteamStored, getStoredEU, getStoredEUString, getStoredSteam, getWorkMaxProgress, getWorkProgress, hasWork, isMachineActive, isWorkAllowed, setParameters, setWorkAllowed
+  sensor[1]: Прогресс: §a890§r с / §e2,250§r с
+  sensor[2]: Энерговводы: §a0§r EU / §e0§r EU
+  sensor[3]: Сейчас используется: §c0§r EU/t при §c1§r A
+  sensor[4]: Тир вольтажа: §eULV§r / §aULV§r Кол-во ампер §a0§r A
+  sensor[5]: Проблемы: §c0§r Эффективность: §e0.0§r %
+  sensor[6]: Передача энергии: §9false§r tt.keyword.SafeVoid: §9false
+  sensor[7]: Вычисление: §a0§r / §e0§r
+  sensor[8]: §6§m-------------§r§6 Статистика блока управления §m-------------
+  sensor[9]: Генератор поля пространственно-временного сжатия: Грубый§r (§e1§r)
+  sensor[10]: Генератор поля замедления времени: Грубый§r (§e1§r)
+  sensor[11]: Генератор поля стабилизации: Грубый§r (§e1§r)
+  sensor[12]: §6§m-----------------§r§6 Внутреннее хранилище §m----------------
+  sensor[13]: §9Гелий§r : §c0
+  sensor[14]: §9Смесь конденсированной сырой звёздной плазмы§r : §c0
+  sensor[15]: §9Водород§r : §c0
+  sensor[16]: §9Астральных массивов§r : §c0
+  sensor[17]: §6§m-----------------§r§6 Остальная статистика §m-----------------
+  sensor[18]: Шанс успеха рецепта: §c79.86§r%
+  sensor[19]: Выход рецепта: §c79.86§r%
+  sensor[20]: Действующие астральные массивы: §c0
+  sensor[21]: Всего параллелей: §c1
+  sensor[22]: Вывод EU: §c1.30x10^16§r EU
+  sensor[23]: Ввод EU: §c2.32x10^18§r EU
+  sensor[24]: Средний вывод Расплавленная материя белого карлика: §c734§r Л, §e0.33§r Л/с
+  sensor[25]: Средний вывод Смесь конденсированной сырой звёздной плазмы: §c63,775§r Л, §e28.34§r Л/с
+  sensor[26]: Расчётные EU/t: §c-5.12x10^13§r EU/t
+  sensor[27]: §6§m-----------------------------------------------------
+  isMachineActive=true
+  hasWork=true
+  getWorkProgress=17810
+  getWorkMaxProgress=45000
+gt_machine count=1
+
+TRANSPOSER COMPONENTS
+
+COMPONENT transposer [ec79567c-cac0-4df5-ae92-899252adaef9]
+  proxy type: table
+  methods: areStacksEquivalent, compareStackToDatabase, compareStacks, getAllStacks, getContainerCapacityInSlot, getContainerLevelInSlot, getFluidInContainerInSlot, getFluidInTank, getFluidTransferRate, getInventoryName, getInventorySize, getSlotMaxStackSize, getSlotStackSize, getStackInSlot, getTankCapacity, getTankCount, getTankLevel, setStackDisplayName, store, transferFluid, transferFluidBetweenContainers, transferFluidFromContainerToTank, transferFluidFromTankToContainer, transferItem
+  side 0 tankCount=1
+  side 0 tank 1 capacity=128000000 level=128000000
+  side 0 tank 1 fluid={capacity=128000000,amount=128000000,name="hydrogen",hasTag=false,label="Водород"}
+  side 1 tankCount=0
+  side 1 tank 1 capacity=ERR:invalid tank index level=ERR:invalid tank index
+  side 1 tank 1 fluid=ERR:invalid tank index
+  side 2 tankCount=0
+  side 2 tank 1 capacity=ERR:invalid tank index level=ERR:invalid tank index
+  side 2 tank 1 fluid=ERR:invalid tank index
+  side 3 tankCount=1
+  side 3 tank 1 capacity=32768000 level=0
+  side 3 tank 1 fluid={amount=0,capacity=32768000}
+  side 4 tankCount=1
+  side 4 tank 1 capacity=128000000 level=128000000
+  side 4 tank 1 fluid={capacity=128000000,amount=128000000,name="helium",hasTag=false,label="Гелий"}
+  side 5 tankCount=0
+  side 5 tank 1 capacity=ERR:invalid tank index level=ERR:invalid tank index
+  side 5 tank 1 fluid=ERR:invalid tank index
+  getFluidTransferRate(0)=20971520
+
+COMPONENT transposer [1f2235f4-e1c1-4a0b-bdc1-c6ef0884a88c]
+  proxy type: table
+  methods: areStacksEquivalent, compareStackToDatabase, compareStacks, getAllStacks, getContainerCapacityInSlot, getContainerLevelInSlot, getFluidInContainerInSlot, getFluidInTank, getFluidTransferRate, getInventoryName, getInventorySize, getSlotMaxStackSize, getSlotStackSize, getStackInSlot, getTankCapacity, getTankCount, getTankLevel, setStackDisplayName, store, transferFluid, transferFluidBetweenContainers, transferFluidFromContainerToTank, transferFluidFromTankToContainer, transferItem
+  side 0 tankCount=0
+  side 0 tank 1 capacity=ERR:invalid tank index level=ERR:invalid tank index
+  side 0 tank 1 fluid=ERR:invalid tank index
+  side 1 tankCount=1
+  side 1 tank 1 capacity=128000000 level=128000000
+  side 1 tank 1 fluid={capacity=128000000,amount=128000000,name="helium",hasTag=false,label="Гелий"}
+  side 2 tankCount=0
+  side 2 tank 1 capacity=ERR:invalid tank index level=ERR:invalid tank index
+  side 2 tank 1 fluid=ERR:invalid tank index
+  side 3 tankCount=1
+  side 3 tank 1 capacity=32768000 level=16960000
+  side 3 tank 1 fluid={capacity=32768000,amount=16960000,name="helium",hasTag=false,label="Гелий"}
+  side 4 tankCount=0
+  side 4 tank 1 capacity=ERR:invalid tank index level=ERR:invalid tank index
+  side 4 tank 1 fluid=ERR:invalid tank index
+  side 5 tankCount=1
+  side 5 tank 1 capacity=128000000 level=128000000
+  side 5 tank 1 fluid={capacity=128000000,amount=128000000,name="hydrogen",hasTag=false,label="Водород"}
+  getFluidTransferRate(0)=20971520
+transposer count=2
+
+SIDES
+  posz=3
+  front=3
+  right=4
+  bottom=0
+  east=5
+  back=2
+  negy=0
+  posx=5
+  forward=3
+  posy=1
+  negx=4
+  negz=2
+  unknown=6
+  down=0
+  top=1
+  west=4
+  south=3
+  north=2
+  up=1
+  left=5
+
+REGISTRY FILE
+path=/home/hub/registry.dat exists=true
+size=812
+contents={{settings={tolerance=0.001,autoRestart=true,tier=1,mode="production",overclocks=3,useAA=false},name="1",id=1,components={all={{address="d80ef108-4099-4350-9e29-6366ba31c7ea",name="gt_machine"},{address="1f2235f4-e1c1-4a0b-bdc1-c6ef0884a88c",name="transposer"},{address="ec79567c-cac0-4df5-ae92-899252adaef9",name="transposer"}},transposerPlasmaList={},transposers={{fluid="helium",transferRate=20971520,level=128000000,address="1f2235f4-e1c1-4a0b-bdc1-c6ef0884a88c",targetSide=3,sourceSide=1,capacity=128000000},{fluid="hydrogen",transferRate=20971520,level=128000000,address="ec79567c-cac0-4df5-ae92-899252adaef9",targetSide=3,sourceSide=0,capacity=128000000}},transposerH2="ec79567c-cac0-4df5-ae92-899252adaef9",eoh="d80ef108-4099-4350-9e29-6366ba31c7ea",transposerHe="1f2235f4-e1c1-4a0b-bdc1-c6ef0884a88c"}}}
