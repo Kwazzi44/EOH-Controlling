@@ -1,8 +1,3 @@
--- ============================================
--- INSTALL_EOH.LUA - Установка/переустановка
--- Сохраняет настройки, удаляет старые файлы,
--- устанавливает новые, восстанавливает настройки
--- ============================================
 
 local filesystem = require("filesystem")
 local internet = require("internet")
@@ -16,7 +11,6 @@ local REPO = "https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling/main"
 -- ============================================
 
 local FILES = {
-    -- EOH модули
     "/home/eoh/config.lua",
     "/home/eoh/eoh_core.lua",
     "/home/eoh/logger.lua",
@@ -24,29 +18,23 @@ local FILES = {
     "/home/eoh/recipes.lua",
     "/home/eoh/settings.lua",
     "/home/eoh/theme.lua",
-    
-    -- HUB модули
     "/home/hub/calculator.lua",
     "/home/hub/config.lua",
     "/home/hub/main.lua",
     "/home/hub/registry.lua",
     "/home/hub/setup.lua",
-    
-    -- Корневые файлы
     "/autorun.lua",
     "/U.lua",
     "/update_manifest.lua",
     "/README.md",
 }
 
--- Файлы с настройками (НЕ УДАЛЯЕМ)
 local SETTINGS_FILES = {
-    "/home/hub/registry.dat",    -- Регистрация EOH
-    "/home/eoh/settings.dat",    -- Настройки EOH
-    "/home/backup/",             -- Папка с бэкапами
+    "/home/hub/registry.dat",
+    "/home/eoh/settings.dat",
+    "/home/backup/",
 }
 
--- Папки для удаления (очищаем, но сохраняем настройки)
 local FOLDERS_TO_CLEAN = {
     "/home/eoh/",
     "/home/hub/",
@@ -65,7 +53,9 @@ function downloadFile(url, path)
     local data = ""
     while true do
         local chunk = req.read()
-        if not chunk then break end
+        if not chunk then
+            break
+        end
         data = data .. chunk
     end
     
@@ -139,13 +129,12 @@ function restoreSettings()
 end
 
 -- ============================================
--- ОЧИСТКА СТАРЫХ ФАЙЛОВ (КРОМЕ НАСТРОЕК)
+-- ОЧИСТКА СТАРЫХ ФАЙЛОВ
 -- ============================================
 
 function cleanOldFiles()
     print("🗑️  Удаление старых файлов...")
     
-    -- Удаляем файлы
     local deleted = 0
     for _, file in ipairs(FILES) do
         if filesystem.exists(file) then
@@ -155,13 +144,11 @@ function cleanOldFiles()
         end
     end
     
-    -- Очищаем папки (удаляем все файлы внутри, но сохраняем папки)
     for _, folder in ipairs(FOLDERS_TO_CLEAN) do
         if filesystem.exists(folder) then
             local list = filesystem.list(folder)
             for _, item in ipairs(list) do
                 local path = folder .. item
-                -- Проверяем, не является ли это настройками
                 local isSetting = false
                 for _, setting in ipairs(SETTINGS_FILES) do
                     if path == setting then
@@ -188,7 +175,6 @@ end
 function installNewFiles()
     print("📦 Установка новых файлов...")
     
-    -- Создаем папки
     local dirs = {
         "/home/eoh/",
         "/home/eoh/logs/",
@@ -202,7 +188,6 @@ function installNewFiles()
         end
     end
     
-    -- Скачиваем файлы
     local installed = 0
     local failed = 0
     
@@ -225,7 +210,7 @@ function installNewFiles()
     print("  ❌ Ошибок: " .. failed)
     
     return installed, failed
-}
+end
 
 -- ============================================
 -- ГЛАВНАЯ ФУНКЦИЯ
@@ -238,7 +223,6 @@ function install()
     print("╚════════════════════════════════════════════════════════════════╝")
     print("")
     
-    -- Проверяем подключение
     print("🔍 Проверка подключения...")
     local test = internet.request("https://raw.githubusercontent.com")
     if not test then
@@ -251,23 +235,18 @@ function install()
     print("✅ Подключение есть")
     print("")
     
-    -- Шаг 1: Сохраняем настройки
     backupSettings()
     print("")
     
-    -- Шаг 2: Удаляем старые файлы (кроме настроек)
     cleanOldFiles()
     print("")
     
-    -- Шаг 3: Устанавливаем новые файлы
     local installed, failed = installNewFiles()
     print("")
     
-    -- Шаг 4: Восстанавливаем настройки
     restoreSettings()
     print("")
     
-    -- Шаг 5: Итоги
     print("════════════════════════════════════════════════════════════════")
     print("📊 ИТОГИ УСТАНОВКИ:")
     print("  ✅ Установлено: " .. installed)
@@ -285,7 +264,6 @@ function install()
         return
     end
     
-    -- Удаляем временный файл
     if filesystem.exists("/temp_install.lua") then
         filesystem.remove("/temp_install.lua")
     end

@@ -101,7 +101,6 @@ function configureEOH(index)
     print("")
     print("Выберите действие: ")
     
-    -- Обработка ввода
     local field = 1
     while true do
         local _, _, key = event.pull("key_down")
@@ -198,9 +197,7 @@ if not ok then
     print("")
     print("📖 Проверьте:")
     print("  1. Все файлы установлены в /home/hub/")
-    print("  2. Файл /home/hub/logger.lua существует")
-    print("  3. Файл /home/hub/registry.lua существует")
-    print("  4. Файл /home/hub/setup.lua существует")
+    print("  2. Файлы в /home/eoh/ существуют")
     print("")
     print("Программа остановлена через 10 секунд...")
     os.sleep(10)

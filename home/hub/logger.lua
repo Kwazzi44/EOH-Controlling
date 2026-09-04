@@ -27,13 +27,26 @@ function LOG.write(level, module, message)
     end
 end
 
-function LOG.info(module, message) LOG.write("INFO", module, message) end
-function LOG.warn(module, message) LOG.write("WARN", module, message) end
-function LOG.error(module, message) LOG.write("ERROR", module, message) end
-function LOG.debug(module, message) LOG.write("DEBUG", module, message) end
+function LOG.info(module, message)
+    LOG.write("INFO", module, message)
+end
+
+function LOG.warn(module, message)
+    LOG.write("WARN", module, message)
+end
+
+function LOG.error(module, message)
+    LOG.write("ERROR", module, message)
+end
+
+function LOG.debug(module, message)
+    LOG.write("DEBUG", module, message)
+end
 
 function LOG.flush()
-    if #LOG.buffer == 0 then return end
+    if #LOG.buffer == 0 then
+        return
+    end
     local file = io.open(LOG.path, "a")
     if file then
         file:write(table.concat(LOG.buffer, "\n") .. "\n")

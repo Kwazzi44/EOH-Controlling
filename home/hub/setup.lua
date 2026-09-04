@@ -8,12 +8,6 @@ local registry = require("registry")
 local logger = require("logger")
 local filesystem = require("filesystem")
 
--- Проверяем наличие eoh_core
-local eohCore = nil
-if filesystem.exists("/home/eoh/eoh_core.lua") then
-    eohCore = require("eoh_core")
-end
-
 function runSetup()
     term.clear()
     print("╔════════════════════════════════════════════════════════════════╗")
@@ -24,27 +18,21 @@ function runSetup()
     
     local components = {eoh = nil, transposerH2 = nil, transposerHe = nil, transposerPlasma = nil}
     
-    -- Если есть eoh_core, используем его
-    if eohCore and eohCore.scanComponents then
-        components = eohCore.scanComponents()
-    else
-        -- Простой поиск компонентов
-        for address, name in component.list() do
-            if name:find("EyeOfHarmony") and not components.eoh then
-                components.eoh = address
-                print("  ✅ Найден контроллер: " .. address)
-            end
-            if name:find("transposer") then
-                if not components.transposerH2 then
-                    components.transposerH2 = address
-                    print("  ✅ Найден транспозер (H2): " .. address)
-                elseif not components.transposerHe then
-                    components.transposerHe = address
-                    print("  ✅ Найден транспозер (He): " .. address)
-                elseif not components.transposerPlasma then
-                    components.transposerPlasma = address
-                    print("  ✅ Найден транспозер (Plasma): " .. address)
-                end
+    for address, name in component.list() do
+        if name:find("EyeOfHarmony") and not components.eoh then
+            components.eoh = address
+            print("  ✅ Найден контроллер: " .. address)
+        end
+        if name:find("transposer") then
+            if not components.transposerH2 then
+                components.transposerH2 = address
+                print("  ✅ Найден транспозер (H2): " .. address)
+            elseif not components.transposerHe then
+                components.transposerHe = address
+                print("  ✅ Найден транспозер (He): " .. address)
+            elseif not components.transposerPlasma then
+                components.transposerPlasma = address
+                print("  ✅ Найден транспозер (Plasma): " .. address)
             end
         end
     end
