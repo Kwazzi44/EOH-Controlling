@@ -16,21 +16,31 @@ local SETTINGS = {
 
 function SETTINGS.load()
     if filesystem.exists(SETTINGS.file) then
-        local f, openErr = io.open(SETTINGS.file, "r")
-        if f then
-            local data = f:read("*all")
-            f:close()
-            local ok, saved = pcall(serialization.unserialize, data)
-            if ok and saved then
-                for k, v in pairs(saved) do
-                    config.defaults[k] = v
-                end
-            else
-                print("⚠️  Ошибка загрузки конфига: " .. tostring(saved or openErr))
-                print("   Будут использованы настройки по умолчанию.")
+        local content = ""
+        local result, reason = pcall(function()
+            local f, openErr = io.open(SETTINGS.file, "r")
+            if not f then
+                return nil
             end
-        else
-            print("⚠️  Не удалось открыть файл конфига: " .. tostring(openErr))
+            content = f:read("*all")
+            f:close()
+            return true
+        end)
+
+        if not result or content == "" then
+            print("⚠️  Config file missing or empty. Using defaults.")
+            return
+        end
+
+        local saved, err = serialization.unserialize(content)
+        if not saved then
+            print("⚠️  Ошибка загрузки конфига: " .. tostring(err))
+            print("   Будут использованы настройки по умолчанию.")
+            return
+        end
+
+        for k, v in pairs(saved) do
+            config.defaults[k] = v
         end
     end
 end

@@ -94,7 +94,6 @@ function install()
         "/home/eoh/settings.lua",
         "/home/eoh/theme.lua",
         -- HUB files
-        "/home/hub/calculator.lua",
         "/home/hub/config.lua",
         "/home/hub/theme.lua",
         "/home/hub/main.lua",
