@@ -925,6 +925,9 @@ function waitForCompletion()
     local components = currentComponents()
     logger:info("EOH", "Ожидание завершения...")
     local started = false
+    local checkCount = 0
+    
+    -- Быстрая проверка запуска (первые 5 секунд)
     for _ = 1, 10 do
         local status = getStatus()
         if status.error then return false, status.error end
@@ -932,17 +935,36 @@ function waitForCompletion()
             started = true
             break
         end
-        os.sleep(0.5)
+        checkCount = checkCount + 1
+        if checkCount % 2 == 0 then
+            os.sleep(0.2)  -- Более частый опрос в начале
+        else
+            os.sleep(0.3)
+        end
     end
     if not started then
         return false, "EOH did not become active after enabling work"
     end
+    
+    -- Ожидание завершения с кэшированием и редким опросом
+    local consecutiveInactive = 0
     while true do
         local status = getStatus()
         if status.error then return false, status.error end
-        if not status.active then break end
-        os.sleep(1)
+        
+        -- Проверяем активность с защитой от ложных срабатываний
+        if not status.active then
+            consecutiveInactive = consecutiveInactive + 1
+            if consecutiveInactive >= 3 then  -- 3 подтверждения неактивности
+                break
+            end
+        else
+            consecutiveInactive = 0
+        end
+        
+        os.sleep(0.5)  -- Опрос раз в 0.5 секунды вместо 1
     end
+    
     logger:info("EOH", "Recipe completed")
     setRuntimeState(components.eoh or components.eohController, "READY", "Ready")
     return true
