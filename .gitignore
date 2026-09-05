@@ -1,1 +1,11 @@
-Nothing needs to be added to .gitignore for this change list. The added file 'install_eoh.lua' is a source code file that should be tracked in version control, and there are no build artifacts, dependencies, or temporary files to ignore.
+```
+# Logs
+*.log
+
+# Environment files
+.env.local
+.env
+
+# Temporary files
+*.tmp
+```

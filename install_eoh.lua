@@ -1,106 +1,184 @@
-#!/usr/bin/env lua
--- EOH Controller Installer
--- Автоматическая установка системы управления EOH
+-- ============================================
+-- INSTALL_EOH.LUA - Установка EOH Controller
+-- ============================================
 
-local fs = require("filesystem")
-local shell = require("shell")
+local filesystem = require("filesystem")
+local internet = require("internet")
+local os = require("os")
+local term = require("term")
 
-print("=== EOH Controller Installer ===")
-print("Начинаю установку...")
+local REPO = "https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling/main"
 
--- Конфигурация установки
-local INSTALL_ROOT = "/home"
-local LIB_DIR = INSTALL_ROOT .. "/lib"
-local EOH_DIR = INSTALL_ROOT .. "/eoh"
-local HUB_DIR = INSTALL_ROOT .. "/hub"
+-- ============================================
+-- ФУНКЦИЯ СКАЧИВАНИЯ ФАЙЛА
+-- ============================================
 
--- Создаем директории
-local dirs = {LIB_DIR, EOH_DIR, HUB_DIR}
-for _, dir in ipairs(dirs) do
-    if not fs.exists(dir) then
-        print("Создаю директорию: " .. dir)
-        fs.makeDirectory(dir)
+function downloadFile(url, path)
+    local req = internet.request(url)
+    if not req then
+        return false, "Не удалось создать запрос"
     end
+    
+    local data = ""
+    while true do
+        local chunk = req.read()
+        if not chunk then
+            break
+        end
+        data = data .. chunk
+    end
+    
+    if data == "" then
+        return false, "Получен пустой файл"
+    end
+    
+    local file = io.open(path, "w")
+    if not file then
+        return false, "Не удалось создать файл: " .. path
+    end
+    file:write(data)
+    file:close()
+    
+    return true, "OK"
 end
 
--- Структура файлов: {Откуда (относительно корня репо), Куда копировать}
-local filesToInstall = {
-    -- Библиотеки
-    {"update_manifest.lua", LIB_DIR .. "/update_manifest.lua"},
-    {"home/lib/logger.lua", LIB_DIR .. "/logger.lua"},
-    
-    -- EOH Core
-    {"home/eoh/eoh_core.lua", EOH_DIR .. "/eoh_core.lua"},
-    {"home/eoh/settings.lua", EOH_DIR .. "/settings.lua"},
-    {"home/eoh/main.lua", EOH_DIR .. "/init.lua"},  -- main.lua используем как точку входа
-    
-    -- HUB
-    {"home/hub/main.lua", HUB_DIR .. "/main.lua"},
-    {"home/hub/registry.lua", HUB_DIR .. "/registry.lua"},
-    {"home/hub/gui.lua", HUB_DIR .. "/gui.lua"},
-    {"home/hub/setup.lua", HUB_DIR .. "/setup.lua"},  -- setup.lua для настройки
-    
-    -- Корневые файлы
-    {"init.lua", INSTALL_ROOT .. "/init.lua"},
-    {"autorun.lua", INSTALL_ROOT .. "/autorun.lua"},
-    {"U.lua", "/U.lua"}
-}
+-- ============================================
+-- ГЛАВНАЯ ФУНКЦИЯ
+-- ============================================
 
--- Примечание: Файл update_manifest.lua должен находиться в корне репозитория (/workspace/update_manifest.lua)
-
--- Проверяем наличие всех исходных файлов перед установкой
-print("\nПроверка файлов...")
-local missingFiles = {}
-for _, fileMap in ipairs(filesToInstall) do
-    local src = fileMap[1]
-    if not fs.exists(src) then
-        table.insert(missingFiles, src)
+function install()
+    term.clear()
+    print("╔════════════════════════════════════════════════════════════════╗")
+    print("║           УСТАНОВКА EOH CONTROLLER v2.0                      ║")
+    print("║        Модульная система с общим логгером                    ║")
+    print("╚════════════════════════════════════════════════════════════════╝")
+    print("")
+    
+    -- Проверка интернета
+    print("🔍 Проверка подключения...")
+    local test = internet.request("https://raw.githubusercontent.com")
+    if not test then
+        print("❌ Нет подключения к интернету!")
+        print("Нажмите любую клавишу для выхода...")
+        os.sleep(5)
+        return
     end
-end
-
-if #missingFiles > 0 then
-    print("\n[ERROR] Отсутствуют следующие файлы:")
-    for _, file in ipairs(missingFiles) do
-        print("  - " .. file)
-    end
-    print("\nУстановка невозможна. Проверьте структуру репозитория.")
-    return
-end
-
-local successCount = 0
-local failCount = 0
-
-print("\nКопирование файлов:")
-for _, fileMap in ipairs(filesToInstall) do
-    local src = fileMap[1]
-    local dst = fileMap[2]
+    print("✅ Подключение есть")
+    print("")
     
-    -- Проверяем существование исходного файла
-    if not fs.exists(src) then
-        print("  [ERROR] Файл не найден: " .. src)
-        failCount = failCount + 1
-    else
-        -- Копируем файл
-        local ok, err = fs.copy(src, dst)
-        if ok then
-            print("  [OK] " .. dst)
-            successCount = successCount + 1
-        else
-            print("  [ERROR] Не удалось скопировать: " .. dst .. " (" .. tostring(err) .. ")")
-            failCount = failCount + 1
+    -- Создаем папки
+    print("📁 Создание папок...")
+    local dirs = {
+        "/home/eoh/",
+        "/home/eoh/logs/",
+        "/home/hub/",
+        "/home/hub/logs/",
+    }
+    for _, dir in ipairs(dirs) do
+        if not filesystem.exists(dir) then
+            filesystem.makeDirectory(dir)
+            print("  ✅ Создана: " .. dir)
         end
     end
+    print("")
+    
+    -- Список файлов для скачивания
+    local files = {
+        -- EOH Controller files
+        "/home/eoh/config.lua",
+        "/home/eoh/eoh_config.lua",
+        "/home/eoh/eoh_core.lua",
+        "/home/eoh/diagnose.lua",
+        "/home/eoh/main.lua",
+        "/home/eoh/recipes.lua",
+        "/home/eoh/settings.lua",
+        "/home/eoh/theme.lua",
+        -- HUB files
+        "/home/hub/config.lua",
+        "/home/hub/theme.lua",
+        "/home/hub/main.lua",
+        "/home/hub/gui.lua",
+        "/home/hub/registry.lua",
+        "/home/hub/setup.lua",
+        -- Shared library
+        "/home/lib/logger.lua",
+        -- Root files
+        "/autorun.lua",
+        "/U.lua",
+        "/update_manifest.lua",
+        "/README.md",
+        "/init.lua",
+    }
+    
+    -- Скачиваем файлы
+    print("📦 Загрузка файлов...")
+    local installed = 0
+    local failed = 0
+    
+    for _, file in ipairs(files) do
+        local url = REPO .. file
+        local name = filesystem.name(file)
+        print("  📥 " .. name)
+        
+        local success, err = downloadFile(url, file)
+        if success then
+            print("  ✅ " .. name)
+            installed = installed + 1
+        else
+            print("  ❌ " .. name .. " - " .. tostring(err))
+            failed = failed + 1
+        end
+    end
+    
+    print("")
+    print("════════════════════════════════════════════════════════════════")
+    print("📊 ИТОГИ:")
+    print("  ✅ Установлено: " .. installed)
+    print("  ❌ Ошибок: " .. failed)
+    print("════════════════════════════════════════════════════════════════")
+    print("")
+    
+    if failed > 0 then
+        print("⚠️  Некоторые файлы не установились.")
+        print("Проверьте подключение и повторите попытку.")
+        print("Нажмите любую клавишу для выхода...")
+        os.sleep(5)
+        return
+    end
+    
+    print("✅ Установка завершена!")
+    print("")
+    print("📖 Как использовать:")
+    print("  • Запуск HUB: lua /home/hub/main.lua")
+    print("  • Запуск EOH (один): lua /home/eoh/main.lua")
+    print("  • Обновление: lua /U.lua")
+    print("")
+    print("⚙️  Файлы logger.lua перемещены в /home/lib/")
+    print("   EOH и HUB теперь используют общий модуль.")
+    print("")
+    print("Перезагрузка через 5 секунд...")
+    os.sleep(5)
+    os.reboot()
 end
 
-print("\n=== Установка завершена ===")
-print("Успешно: " .. successCount)
-print("Ошибок: " .. failCount)
+-- ============================================
+-- ЗАПУСК С ОБРАБОТКОЙ ОШИБОК
+-- ============================================
 
-if failCount > 0 then
-    print("\nВНИМАНИЕ: Некоторые файлы не были установлены!")
-    print("Проверьте наличие всех файлов в репозитории.")
-else
-    print("\nВсе файлы установлены успешно!")
-    print("Для запуска HUB выполните: lua /home/hub/main.lua")
-    print("Для запуска одиночного EOH: lua /home/eoh/init.lua")
+local ok, err = pcall(install)
+if not ok then
+    term.clear()
+    print("╔════════════════════════════════════════════════════════════════╗")
+    print("║                    ОШИБКА УСТАНОВКИ                         ║")
+    print("╚════════════════════════════════════════════════════════════════╝")
+    print("")
+    print("❌ " .. tostring(err))
+    print("")
+    print("📖 Возможные причины:")
+    print("  1. Нет подключения к интернету")
+    print("  2. Недостаточно места на диске")
+    print("  3. Проблемы с правами доступа")
+    print("")
+    print("Нажмите любую клавишу для выхода...")
+    os.sleep(10)
 end
