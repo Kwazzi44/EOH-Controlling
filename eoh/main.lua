@@ -9,7 +9,7 @@ local os = require("os")
 local loggerLib = require("lib.logger")
 local logger = loggerLib.new("/home/eoh", "eoh.log")
 logger:init()
-local settings = require("settings")
+local settings = require("lib.settings")
 local core = require("eoh_core")
 
 local function main()
