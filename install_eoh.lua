@@ -73,6 +73,7 @@ function install()
         "/home/eoh/logs/",
         "/home/hub/",
         "/home/hub/logs/",
+        "/home/lib/",
     }
     for _, dir in ipairs(dirs) do
         if not filesystem.exists(dir) then
