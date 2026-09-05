@@ -2,13 +2,9 @@
 -- SETTINGS.LUA - Управление настройками
 -- ============================================
 
-package.path = "/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
-
 local filesystem = require("filesystem")
 local serialization = require("serialization")
-local config = dofile("/home/eoh/config.lua")
-
-config.defaults = config.defaults or {}
+local config = require("lib.config")
 
 local SETTINGS = {
     file = "/home/eoh/settings.dat",

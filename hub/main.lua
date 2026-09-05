@@ -17,6 +17,8 @@ local filesystem = require("filesystem")
 
 local function checkModules()
     local modules = {
+        {name="config", path="/home/lib/config.lua"},
+        {name="settings", path="/home/lib/settings.lua"},
         {name="registry", path="/home/hub/registry.lua"},
         {name="setup", path="/home/hub/setup.lua"},
         {name="logger", path="/home/lib/logger.lua"},
@@ -42,7 +44,7 @@ if not checkModules() then
     return
 end
 
-local config = dofile("/home/hub/config.lua")
+local config = require("lib.config")
 local registry = require("registry")
 local setup = require("setup")
 local loggerLib = require("lib.logger")

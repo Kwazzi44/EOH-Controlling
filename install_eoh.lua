@@ -85,22 +85,18 @@ function install()
     -- Список файлов для скачивания
     local files = {
         -- EOH Controller files
-        "/home/eoh/config.lua",
-        "/home/eoh/eoh_config.lua",
         "/home/eoh/eoh_core.lua",
         "/home/eoh/diagnose.lua",
         "/home/eoh/main.lua",
         "/home/eoh/recipes.lua",
-        "/home/eoh/settings.lua",
-        "/home/eoh/theme.lua",
         -- HUB files
-        "/home/hub/config.lua",
-        "/home/hub/theme.lua",
         "/home/hub/main.lua",
         "/home/hub/gui.lua",
         "/home/hub/registry.lua",
         "/home/hub/setup.lua",
         -- Shared library
+        "/home/lib/config.lua",
+        "/home/lib/settings.lua",
         "/home/lib/logger.lua",
         -- Root files
         "/autorun.lua",
