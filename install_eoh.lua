@@ -84,6 +84,7 @@ function install()
     print("")
     
     -- Список файлов для скачивания (путь относительно корня репозитория)
+    -- ВСЕ файлы теперь устанавливаются ВНУТРЬ /home/
     local files = {
         -- EOH Controller files
         {src="/eoh/eoh_core.lua", dst="/home/eoh/eoh_core.lua"},
@@ -95,16 +96,15 @@ function install()
         {src="/hub/gui.lua", dst="/home/hub/gui.lua"},
         {src="/hub/registry.lua", dst="/home/hub/registry.lua"},
         {src="/hub/setup.lua", dst="/home/hub/setup.lua"},
-        -- Shared library
+        -- Shared library (скачиваем в /home/lib/)
         {src="/lib/config.lua", dst="/home/lib/config.lua"},
         {src="/lib/settings.lua", dst="/home/lib/settings.lua"},
         {src="/lib/logger.lua", dst="/home/lib/logger.lua"},
-        -- Root files
-        {src="/autorun.lua", dst="/autorun.lua"},
-        {src="/U.lua", dst="/U.lua"},
-        {src="/update_manifest.lua", dst="/update_manifest.lua"},
-        {src="/README.md", dst="/README.md"},
-        {src="/init.lua", dst="/init.lua"},
+        -- Root files (теперь тоже в /home/)
+        {src="/autorun.lua", dst="/home/autorun.lua"},
+        {src="/U.lua", dst="/home/U.lua"},
+        {src="/update_manifest.lua", dst="/home/update_manifest.lua"},
+        {src="/init.lua", dst="/home/init.lua"},
     }
     
     -- Скачиваем файлы

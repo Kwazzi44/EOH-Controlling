@@ -1,1 +1,27 @@
-Nothing should be ignored based on the provided file changes. The only modified file is `install_eoh.lua`, which is a source code file and should not be added to .gitignore.
+```
+# Lua build artifacts (if any)
+*.lua~
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Editors/IDE
+.vscode/
+.idea/
+
+# Dependencies (if any Lua package managers used)
+.deps/
+build/
+dist/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```
