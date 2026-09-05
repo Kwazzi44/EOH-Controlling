@@ -1,1 +1,76 @@
-(home/eoh/eoh_core.lua, home/hub/main.lua)
+```
+# Lua-specific ignores
+*.luac
+?.lua
+
+# Dependencies
+?.lua/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Build artifacts
+build/
+dist/
+target/
+
+# Python artifacts (if any)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node artifacts (if any)
+node_modules/
+
+# Java artifacts (if any)
+*.class
+*.jar
+*.war
+*.ear
+target/
+
+# C/C++ artifacts (if any)
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.a
+*.lib
+
+# Compression files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+```
