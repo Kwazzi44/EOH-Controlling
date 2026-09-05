@@ -82,28 +82,28 @@ function install()
     end
     print("")
     
-    -- Список файлов для скачивания
+    -- Список файлов для скачивания (путь относительно корня репозитория)
     local files = {
         -- EOH Controller files
-        "/home/eoh/eoh_core.lua",
-        "/home/eoh/diagnose.lua",
-        "/home/eoh/main.lua",
-        "/home/eoh/recipes.lua",
+        {src="/eoh/eoh_core.lua", dst="/home/eoh/eoh_core.lua"},
+        {src="/eoh/diagnose.lua", dst="/home/eoh/diagnose.lua"},
+        {src="/eoh/main.lua", dst="/home/eoh/main.lua"},
+        {src="/eoh/recipes.lua", dst="/home/eoh/recipes.lua"},
         -- HUB files
-        "/home/hub/main.lua",
-        "/home/hub/gui.lua",
-        "/home/hub/registry.lua",
-        "/home/hub/setup.lua",
+        {src="/hub/main.lua", dst="/home/hub/main.lua"},
+        {src="/hub/gui.lua", dst="/home/hub/gui.lua"},
+        {src="/hub/registry.lua", dst="/home/hub/registry.lua"},
+        {src="/hub/setup.lua", dst="/home/hub/setup.lua"},
         -- Shared library
-        "/home/lib/config.lua",
-        "/home/lib/settings.lua",
-        "/home/lib/logger.lua",
+        {src="/lib/config.lua", dst="/home/lib/config.lua"},
+        {src="/lib/settings.lua", dst="/home/lib/settings.lua"},
+        {src="/lib/logger.lua", dst="/home/lib/logger.lua"},
         -- Root files
-        "/autorun.lua",
-        "/U.lua",
-        "/update_manifest.lua",
-        "/README.md",
-        "/init.lua",
+        {src="/autorun.lua", dst="/autorun.lua"},
+        {src="/U.lua", dst="/U.lua"},
+        {src="/update_manifest.lua", dst="/update_manifest.lua"},
+        {src="/README.md", dst="/README.md"},
+        {src="/init.lua", dst="/init.lua"},
     }
     
     -- Скачиваем файлы
@@ -112,11 +112,11 @@ function install()
     local failed = 0
     
     for _, file in ipairs(files) do
-        local url = REPO .. file
-        local name = filesystem.name(file)
-        print("  📥 " .. name)
+        local url = REPO .. file.src
+        local name = filesystem.name(file.dst)
+        print("  📥 " .. file.src)
         
-        local success, err = downloadFile(url, file)
+        local success, err = downloadFile(url, file.dst)
         if success then
             print("  ✅ " .. name)
             installed = installed + 1
