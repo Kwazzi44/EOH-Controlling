@@ -1,9 +1,10 @@
 local component = require("component")
 local term = require("term")
-local theme = dofile("/home/hub/theme.lua")
+local theme = require("theme")
 local gui = {}
 local gpu = component.isAvailable("gpu") and component.gpu or nil
 local C = theme.C
+local coreBuild = "unknown"
 
 local stageLabel = {
     OFF = "[ OFF ]", READY = "[READY]", LOADING = "[LOAD ]",
@@ -30,6 +31,10 @@ local function modeName(settings)
     if settings.mode == "power" then return "ENERGY" end
     if settings.mode == "aa" then return "AA" end
     return "NO AA"
+end
+
+function gui.setBuild(build)
+    coreBuild = tostring(build or "unknown")
 end
 
 function gui.init()
@@ -81,7 +86,7 @@ function gui.drawDetail(eoh, notice, runtime)
     theme.gset(3, 14, "STAGE: " .. stage .. "   PROGRESS: "
         .. progressText(runtime), stageColor[stage] or C.unknown, C.bg)
     theme.gset(3, 15, runtime.message or "", C.dim, C.bg)
-    theme.gset(3, 16, "CORE BUILD: 20260904-1494", C.dim, C.bg)
+    theme.gset(3, 16, "CORE BUILD: " .. coreBuild, C.dim, C.bg)
     if notice then
         theme.gset(3, 18, tostring(notice):sub(1, width - 5), C.warn, C.bg)
     end
@@ -102,7 +107,7 @@ function gui.draw(eohs, selected, title, runtimes)
     local width, height = theme.getRes()
     local total = #(eohs or {})
     theme.gfill(1, 1, width, height, " ", C.text, C.bg)
-    theme.drawHeader("GTNH EOH MONITOR", string.format("LIVE - %d CONTROLLERS | B1494", total))
+    theme.drawHeader("GTNH EOH MONITOR", string.format("LIVE - %d CONTROLLERS | B%s", total, coreBuild))
     theme.gset(1, 4, "|" .. theme.pad("#", 4) .. theme.pad("EOH NAME", 16)
         .. theme.pad("STAGE", 11) .. theme.pad("PROGRESS", 10)
         .. theme.pad("MODE", 11) .. theme.pad("TIER", 5)

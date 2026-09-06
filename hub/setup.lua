@@ -8,7 +8,7 @@ local term = require("term")
 local event = require("event")
 local component = require("component")
 local registry = require("registry")
-local loggerLib = require("lib.logger")
+local loggerLib = require("logger")
 local logger = loggerLib.new("/home/hub", "hub.log")
 logger:init()
 local filesystem = require("filesystem")
@@ -105,11 +105,6 @@ function runSetup(targetIndex)
                 components.transposerHe = transposer.address
             end
         end
-    end
-    if #visibleTransposers == 1 then
-        local address = visibleTransposers[1].address
-        components.transposerH2 = components.transposerH2 or address
-        components.transposerHe = components.transposerHe or address
     end
     local visiblePlasma = {}
     for _, address in ipairs(components.transposerPlasmaList or {}) do

@@ -4,7 +4,7 @@
 
 local filesystem = require("filesystem")
 local serialization = require("serialization")
-local loggerLib = require("lib.logger")
+local loggerLib = require("logger")
 local logger = loggerLib.new("/home/hub", "hub.log")
 logger:init()
 
@@ -81,12 +81,10 @@ function REGISTRY.addEOH(name, components, settings)
         }
     }
     local saved = REGISTRY.save()
-    if not saved and logger:error then
+    if not saved then
         logger:error("REGISTRY", "Не удалось сохранить новый EOH")
     end
-    if logger:info then
-        logger:info("REGISTRY", "Добавлен EOH #" .. id .. " (" .. REGISTRY.eohs[id].name .. ")")
-    end
+    logger:info("REGISTRY", "Добавлен EOH #" .. id .. " (" .. REGISTRY.eohs[id].name .. ")")
     return id, saved
 end
 
@@ -101,12 +99,10 @@ function REGISTRY.updateEOH(index, settings)
         REGISTRY.eohs[index].settings[k] = v
     end
     local saved = REGISTRY.save()
-    if not saved and logger:error then
+    if not saved then
         logger:error("REGISTRY", "Не удалось сохранить настройки EOH #" .. index)
     end
-    if logger:info then
-        logger:info("REGISTRY", "Обновлен EOH #" .. index)
-    end
+    logger:info("REGISTRY", "Обновлен EOH #" .. index)
     return saved
 end
 

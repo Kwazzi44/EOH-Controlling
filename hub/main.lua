@@ -44,14 +44,15 @@ if not checkModules() then
     return
 end
 
-local config = require("lib.config")
+local config = require("config")
 local registry = require("registry")
 local setup = require("setup")
-local loggerLib = require("lib.logger")
+local loggerLib = require("logger")
 local logger = loggerLib.new("/home/hub", "hub.log")
 logger:init()
 local core = require("eoh_core")
 local gui = require("gui")
+gui.setBuild(core.build)
 gui.init()
 
 local function keyToChar(key)
@@ -97,7 +98,7 @@ end
 local function computeEohsHash(eohs)
     local hash = ""
     for i, e in ipairs(eohs or {}) do
-        hash = hash .. i .. ":" .. tostring(e.name) .. ":" .. tostring(e.components.eohController or "") .. ";"
+        hash = hash .. i .. ":" .. tostring(e.name) .. ":" .. tostring((e.components or {}).eohController or "") .. ";"
     end
     return hash
 end
@@ -276,8 +277,9 @@ function configureEOH(index)
             change(-1)
         elseif keyCode == keyboard.keys.right then
             change(1)
-        elseif keyCode and keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter
-            or keyCode == 28
+        elseif keyCode and (keyCode == keyboard.keys.enter
+            or keyCode == keyboard.keys.numpadenter
+            or keyCode == 28)
             or char == "s" or char == "S" then
             if computer.uptime() >= inputEnabledAt then
                 registry.updateEOH(index, settings)
@@ -290,8 +292,6 @@ function configureEOH(index)
         elseif isLetter(charCode, keyCode, "b", 48)
             or keyCode == keyboard.keys.escape or keyCode == 1
             or keyCode == 14 then
-            break
-        elseif char == "s" or char == "S" then
             break
         end
         drawSettings()
@@ -320,6 +320,7 @@ function main()
     end
     local selected = 1
     while true do
+        core.tickConfiguredCycles()
         local now = computer.uptime()
         
         -- Обновляем данные только по таймеру или при событии
@@ -340,11 +341,12 @@ function main()
             selected = math.max(1, selected - 1)
             dataDirty = true  -- Помечаем данные для обновления
         elseif keyCode and keyCode == keyboard.keys.down then
-            selected = math.min(math.max(1, #eohs), selected + 1)
+            selected = math.min(math.max(1, #registry.getAll()), selected + 1)
             dataDirty = true  -- Помечаем данные для обновления
-        elseif keyCode and keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter
-            or keyCode == 28 then
-            if eohs[selected] then showDetail(selected) end
+        elseif keyCode and (keyCode == keyboard.keys.enter
+            or keyCode == keyboard.keys.numpadenter
+            or keyCode == 28) then
+            if registry.getAll()[selected] then showDetail(selected) end
         elseif char and char >= "1" and char <= "9" then
             configureEOH(tonumber(char))
         elseif keyCode and isKey(keyCode, keyboard.keys.f1, 59) then

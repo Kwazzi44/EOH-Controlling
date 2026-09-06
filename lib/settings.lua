@@ -4,7 +4,7 @@
 
 local filesystem = require("filesystem")
 local serialization = require("serialization")
-local config = require("lib.config")
+local config = require("config")
 
 local SETTINGS = {
     file = "/home/eoh/settings.dat",
@@ -24,7 +24,7 @@ function SETTINGS.load()
         end)
 
         if not result or content == "" then
-            print("⚠️  Config file missing or empty. Using defaults.")
+            print("⚠️  Файл настроек отсутствует или пуст. Используются значения по умолчанию.")
             return
         end
 

@@ -49,7 +49,7 @@ end
 function install()
     term.clear()
     print("╔════════════════════════════════════════════════════════════════╗")
-    print("║           УСТАНОВКА EOH CONTROLLER v2.0                      ║")
+    print("║           УСТАНОВКА EOH CONTROLLER v2.1                      ║")
     print("║        Модульная система с общим логгером                    ║")
     print("╚════════════════════════════════════════════════════════════════╝")
     print("")
@@ -96,6 +96,7 @@ function install()
         {src="/hub/gui.lua", dst="/home/hub/gui.lua"},
         {src="/hub/registry.lua", dst="/home/hub/registry.lua"},
         {src="/hub/setup.lua", dst="/home/hub/setup.lua"},
+        {src="/hub/theme.lua", dst="/home/hub/theme.lua"},
         -- Shared library (скачиваем в /home/lib/)
         {src="/lib/config.lua", dst="/home/lib/config.lua"},
         {src="/lib/settings.lua", dst="/home/lib/settings.lua"},
@@ -104,7 +105,6 @@ function install()
         {src="/autorun.lua", dst="/home/autorun.lua"},
         {src="/U.lua", dst="/home/U.lua"},
         {src="/update_manifest.lua", dst="/home/update_manifest.lua"},
-        {src="/init.lua", dst="/home/init.lua"},
     }
     
     -- Скачиваем файлы
