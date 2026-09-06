@@ -21,9 +21,7 @@ end
 
 local function call(address, proxy, method, ...)
     local ok, value = pcall(component.invoke, address, method, ...)
-    if ok then
-        return true, value
-    end
+    if ok then return true, value end
     if proxy and type(proxy[method]) == "function" then
         return pcall(proxy[method], ...)
     end
@@ -31,18 +29,14 @@ local function call(address, proxy, method, ...)
 end
 
 local function valueText(value)
-    if type(value) == "table" then
-        return serialization.serialize(value)
-    end
+    if type(value) == "table" then return serialization.serialize(value) end
     return tostring(value)
 end
 
 local function dumpMethods(proxy)
     local names = {}
     for name, value in pairs(proxy or {}) do
-        if type(value) == "function" then
-            names[#names + 1] = name
-        end
+        if type(value) == "function" then names[#names + 1] = name end
     end
     table.sort(names)
     return #names > 0 and table.concat(names, ", ") or "<none>"
@@ -69,9 +63,7 @@ local function dumpSensor(address, proxy)
         line("  sensor: " .. valueText(info))
         return
     end
-    for index, text in ipairs(info) do
-        line("  sensor[" .. index .. "]: " .. tostring(text))
-    end
+    for index, text in ipairs(info) do line("  sensor[" .. index .. "]: " .. tostring(text)) end
 end
 
 local function dumpTank(address, proxy, side)
@@ -94,9 +86,7 @@ local function dumpTank(address, proxy, side)
     end
     if count ~= 0 then
         local okZero, zeroInfo = call(address, proxy, "getFluidInTank", side, 0)
-        if okZero then
-            line(prefix .. " tank 0 fluid=" .. valueText(zeroInfo))
-        end
+        if okZero then line(prefix .. " tank 0 fluid=" .. valueText(zeroInfo)) end
     end
 end
 
@@ -118,9 +108,7 @@ local function dumpComponent(address, name)
             if ok then line("  " .. method .. "=" .. valueText(result)) end
         end
     elseif name == "transposer" then
-        for side = 0, 5 do
-            dumpTank(address, proxy, side)
-        end
+        for side = 0, 5 do dumpTank(address, proxy, side) end
         for _, method in ipairs({"getTransferRate", "getFluidTransferRate"}) do
             local ok, result = call(address, proxy, method, 0)
             if ok then line("  " .. method .. "(0)=" .. valueText(result)) end
@@ -157,14 +145,12 @@ line("transposer count=" .. transposerCount)
 line("")
 line("SIDES")
 for name, value in pairs(sides) do
-    if type(value) == "number" then
-        line("  " .. tostring(name) .. "=" .. tostring(value))
-    end
+    if type(value) == "number" then line("  " .. tostring(name) .. "=" .. tostring(value)) end
 end
 
 line("")
-line("REGISTRY FILE")
-local registryPath = "/home/hub/registry.dat"
+line("PROTECTED EOH DATABASE")
+local registryPath = "/home/eoh_data/database.dat"
 line("path=" .. registryPath .. " exists=" .. tostring(filesystem.exists(registryPath)))
 if filesystem.exists(registryPath) then
     local file = io.open(registryPath, "r")
@@ -180,9 +166,7 @@ end
 
 for _, outputPath in ipairs(outputPaths) do
     local directory = filesystem.path(outputPath)
-    if directory and not filesystem.exists(directory) then
-        filesystem.makeDirectory(directory)
-    end
+    if directory and not filesystem.exists(directory) then filesystem.makeDirectory(directory) end
     local output = io.open(outputPath, "w")
     if output then
         output:write(table.concat(lines, "\n"))
