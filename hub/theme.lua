@@ -3,7 +3,9 @@
 -- ============================================
 
 local theme = {}
+local gpu
 
+-- Keep the GPU reference in module-local state.
 theme.C = {
     bg = 0x000000,
     text = 0xFFFFFF,
@@ -22,8 +24,11 @@ theme.C = {
 
 local width, height = 80, 25
 
-function theme.init(gpu)
-    width, height = gpu.getResolution()
+function theme.init(g)
+    gpu = g
+    if gpu then
+        width, height = gpu.getResolution()
+    end
 end
 
 function theme.getRes()
@@ -31,19 +36,11 @@ function theme.getRes()
 end
 
 function theme.gfill(x, y, w, h, char, fg, bg)
+    if not gpu then return end
     if not w or w <= 0 or not h or h <= 0 then return end
     gpu.setForeground(fg or theme.C.text)
     gpu.setBackground(bg or theme.C.bg)
     gpu.fill(x, y, w, h, char or " ")
-end
-
-local gpu
-
--- GUI calls init before drawing. Keep the GPU reference here.
-local originalInit = theme.init
-theme.init = function(g)
-    gpu = g
-    originalInit(g)
 end
 
 function theme.gset(x, y, text, fg, bg)
