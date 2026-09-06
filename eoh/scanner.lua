@@ -21,29 +21,59 @@ local function sensorMarksController(proxy)
     if not ok or type(info) ~= "table" then return false end
     for _, line in ipairs(info) do
         local text = clean(line)
-        if text:find("progress:",1,true) or text:find("problems",1,true) or text:find("efficiency:",1,true) or text:find("прогресс:",1,true) or text:find("проблемы",1,true) or text:find("эффективность:",1,true) then return true end
+        if text:find("progress:",1,true) or text:find("problems",1,true) or text:find("efficiency:",1,true)
+            or text:find("прогресс:",1,true) or text:find("проблемы",1,true) or text:find("эффективность",1,true)
+            or text:find("multimachine",1,true) and text:find("harmony",1,true)
+            or text:find("внутреннее хранилище",1,true)
+            or text:find("астральных массивов",1,true) then
+            return true
+        end
     end
     return false
 end
 local function machineName(proxy, fallback)
+    -- GTNH exposes the actual machine id through getName(); some variants may also expose getMachineName().
     if proxy and type(proxy.getMachineName) == "function" then
         local ok, value = pcall(proxy.getMachineName)
+        if ok and type(value) == "string" and value ~= "" then return value end
+    end
+    if proxy and type(proxy.getName) == "function" then
+        local ok, value = pcall(proxy.getName)
         if ok and type(value) == "string" and value ~= "" then return value end
     end
     return fallback or "gt_machine"
 end
 local function controllerEvidence(address, proxy, name)
     local lowerName, reasons, score = clean(name), {}, 0
-    local strong = lowerName:find("eye of harmony",1,true) or lowerName:find("eyeofharmony",1,true) or lowerName:find("eoh",1,true)
+    -- GTNH names like: multimachine:eye_of_harmony
+    local strong = lowerName:find("eye_of_harmony",1,true)
+        or lowerName:find("eye of harmony",1,true)
+        or lowerName:find("eyeofharmony",1,true)
+        or lowerName:find("multimachine:eye_of_harmony",1,true)
     if strong then score = score + 100; reasons[#reasons+1] = "machine name" end
     if hasMethod(address,"setWorkAllowed") then score=score+3; reasons[#reasons+1]="setWorkAllowed" end
     if hasMethod(address,"getWorkProgress") then score=score+2; reasons[#reasons+1]="getWorkProgress" end
     if hasMethod(address,"getWorkMaxProgress") then score=score+2; reasons[#reasons+1]="getWorkMaxProgress" end
+    if hasMethod(address,"getSensorInformation") then score=score+1; reasons[#reasons+1]="getSensorInformation" end
     if hasMethod(address,"getTankInfo") then score=score+1; reasons[#reasons+1]="getTankInfo" end
     local sensor = sensorMarksController(proxy)
-    if sensor then score=score+3; reasons[#reasons+1]="sensor markers" end
-    local structural = hasMethod(address,"setWorkAllowed") and hasMethod(address,"getWorkProgress") and hasMethod(address,"getWorkMaxProgress") and sensor
-    return {address=address,name=name,score=score,strong=strong and true or false,structural=structural and true or false,candidate=strong and true or false,reasons=reasons}
+    if sensor then score=score+5; reasons[#reasons+1]="EOH sensor markers" end
+    local structural = hasMethod(address,"setWorkAllowed")
+        and hasMethod(address,"getWorkProgress")
+        and hasMethod(address,"getWorkMaxProgress")
+        and hasMethod(address,"getSensorInformation")
+        and sensor
+    -- The real GTNH EOH adapter is exposed as gt_machine and has these exact methods/sensor markers.
+    -- We still keep multiple matches as manual choices instead of guessing between EOHs.
+    return {
+        address=address,
+        name=name,
+        score=score,
+        strong=strong and true or false,
+        structural=structural and true or false,
+        candidate=(strong or structural) and true or false,
+        reasons=reasons,
+    }
 end
 local function tankContents(info)
     if type(info) ~= "table" then return nil end
@@ -83,6 +113,9 @@ local function roleForFluid(text)
     if text:find("hydrogen",1,true) then return "hydrogen" end
     if text:find("helium",1,true) then return "helium" end
     if text:find("plasma",1,true) then return "plasma" end
+    if text:find("водород",1,true) then return "hydrogen" end
+    if text:find("гелий",1,true) then return "helium" end
+    if text:find("плазм",1,true) then return "plasma" end
     return nil
 end
 local function detectFluidRole(transposer)
@@ -102,14 +135,14 @@ function M.scan(excluded, options)
             local ok,proxy=pcall(component.proxy,address)
             if ok and proxy then
                 local name=machineName(proxy,componentName); local evidence=controllerEvidence(address,proxy,name)
-                local machine={address=address,name=name,isControllerCandidate=evidence.candidate,score=evidence.score,reasons=evidence.reasons}
+                local machine={address=address,name=name,isControllerCandidate=evidence.candidate,score=evidence.score,reasons=evidence.reasons,structural=evidence.structural,strong=evidence.strong}
                 table.insert(found.machines,machine); table.insert(found.all,{address=address,name=name,type="gt_machine"})
                 if evidence.candidate then table.insert(found.controllerCandidates,machine) end
             end
         end
     end
     if #found.controllerCandidates==1 then found.eoh=found.controllerCandidates[1].address; found.controllers={found.eoh}
-    elseif #found.controllerCandidates>1 then found.warnings[#found.warnings+1]="Несколько кандидатов EOH: контроллер не выбран автоматически."
+    elseif #found.controllerCandidates>1 then found.warnings[#found.warnings+1]="Несколько кандидатов EOH: контроллер не выбран автоматически." 
     else found.warnings[#found.warnings+1]="Контроллер EOH не распознан автоматически." end
     for address in component.list("transposer") do
         if not excluded[address] then
