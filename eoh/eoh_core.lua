@@ -10,7 +10,7 @@ local thread = require("thread")
 local computer = require("computer")
 local component = require("component")
 
-local M = {build = "20260906-2300"}
+local M = {build = "20260906-2303"}
 local defaultContext = nil
 local runners = {}
 
@@ -93,7 +93,15 @@ function M.startConfiguredCycle(components, settings)
 end
 
 function M.tick()
-    for address, runner in pairs(runners) do if not runner.running then runners[address] = nil end end
+    for address, runner in pairs(runners) do
+        if not runner.running then runners[address] = nil end
+    end
+end
+
+-- Compatibility API used by the current HUB loop.
+-- The runner cleanup is intentionally the same lightweight operation as tick().
+function M.tickConfiguredCycles()
+    return M.tick()
 end
 
 function M.stopCycle(components)
