@@ -1,11 +1,11 @@
 -- ============================================
--- UPDATE_MANIFEST.LUA - Манифест обновлений
+-- UPDATE_MANIFEST.LUA - Managed update files
 -- ============================================
-
 return {
-    version = "20260906-2300",
-    date = "2026-09-06",
-    description = "Protected user database, hardware ownership, setup/GUI refactor and staged installer",
+    version = "20260908-1815",
+    date = "2026-09-08",
+    description = "Stable HUB input, persistent runtime contexts, transactional database and recipe-driven setup",
+    protected = "/home/eoh_data",
     files = {
         "/home/autorun.lua",
         "/home/eoh/eoh_core.lua",
@@ -20,6 +20,7 @@ return {
         "/home/hub/main.lua",
         "/home/hub/gui.lua",
         "/home/hub/theme.lua",
+        "/home/hub/input.lua",
         "/home/hub/registry.lua",
         "/home/hub/database.lua",
         "/home/hub/setup.lua",
@@ -29,16 +30,16 @@ return {
         "/home/U.lua",
         "/home/update_manifest.lua",
     },
+    installer = "/home/install_eoh.lua",
     changelog = {
-        "✅ Персональный context для каждого EOH",
-        "✅ Убран опасный fallback случайных компонентов",
-        "✅ Transposer использует только настроенную source/target сторону",
-        "✅ Добавлен cooperative scheduler для AUTO",
-        "✅ Core разделён на context/scanner/runtime/transposers/engine",
-        "✅ Исправлена структура package.path",
-        "✅ Setup позволяет вручную выбрать нераспознанный transposer",
-        "✅ Пользовательская database вынесена из обновляемых каталогов",
-        "✅ Installer обновляет только EOH-файлы и сохраняет пользовательскую database",
+        "Centralized OpenComputers key_down handling; no physical polling/latches",
+        "Persistent context per EOH shared by HUB and engine",
+        "Detail telemetry uses cached runtime state; main screen refresh is lightweight",
+        "Delete stops the EOH worker before removing the database record",
+        "Registry writes are transactional and protected database writes have recovery",
+        "Tier determines the recipe planet; AA explicitly selects Plasma versus H2/He",
+        "Hardware ownership checks are centralized and existing EOH hardware is excluded",
+        "Removed unrelated OpenOS init.lua from the project",
     },
-    critical = false,
+    critical = true,
 }
