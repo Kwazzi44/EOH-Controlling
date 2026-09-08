@@ -130,8 +130,10 @@ local function showDetail(index)
         elseif keyCode and isKey(keyCode, keyboard.keys.f1, 59) then
             setup.runSetup()
             needsRedraw = true
-        elseif isLetter(charCode, keyCode, "b", 48) or keyCode == keyboard.keys.escape or keyCode == 1 or keyCode == 14 then
+        elseif isLetter(charCode, keyCode, "b", 48) or keyCode == 14 then
             return
+        elseif isKey(keyCode, keyboard.keys.f3, 61) then
+            needsRedraw = true
         end
         eoh = registry.getEOH(index) or eoh
     end
@@ -157,7 +159,7 @@ function configureEOH(index)
         for i, value in ipairs(values) do print((i == field and "> " or "  ") .. i .. ". " .. value) end
         print("")
         print("UP/DOWN Select  LEFT/RIGHT Change")
-        print("ENTER Save  R Run  B/ESC Back")
+        print("ENTER Save  R Run  B Backspace")
     end
     local function change(delta)
         if field == 1 then
@@ -181,7 +183,7 @@ function configureEOH(index)
         elseif keyCode and (keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28) or char == "s" or char == "S" then
             if computer.uptime() >= inputEnabledAt then registry.updateEOH(index, settings); break end
         elseif char == "r" or char == "R" then registry.updateEOH(index, settings); core.startConfiguredCycle(eoh.components, settings); break
-        elseif isLetter(charCode, keyCode, "b", 48) or keyCode == keyboard.keys.escape or keyCode == 1 or keyCode == 14 then break end
+        elseif isLetter(charCode, keyCode, "b", 48) or keyCode == 14 then break end
         drawSettings()
     end
 end
