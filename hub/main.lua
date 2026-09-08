@@ -62,17 +62,32 @@ local function isRunKey(charCode, keyCode)
     return charCode == string.byte("r") or charCode == string.byte("R") or keyCode == 19
 end
 
+-- Backspace/B должны работать независимо от раскладки и от наличия
+-- конкретного имени клавиши в keyboard.keys.
+local function isBackKey(charCode, keyCode)
+    return charCode == string.byte("b")
+        or charCode == string.byte("B")
+        or keyCode == keyboard.keys.b
+        or keyCode == 48
+        or keyCode == keyboard.keys.backspace
+        or keyCode == 14
+end
+
 local guiCache = {eohsHash=nil, runtimesHash=nil, selected=nil}
 
 local function computeRuntimesHash(runtimes)
     local hash = ""
-    for i, r in ipairs(runtimes or {}) do hash = hash .. i .. ":" .. tostring(r.stage) .. ":" .. tostring(r.progress) .. ";" end
+    for i, r in ipairs(runtimes or {}) do
+        hash = hash .. i .. ":" .. tostring(r.stage) .. ":" .. tostring(r.progress) .. ":" .. tostring(r.maximum) .. ";"
+    end
     return hash
 end
 
 local function computeEohsHash(eohs)
     local hash = ""
-    for i, e in ipairs(eohs or {}) do hash = hash .. i .. ":" .. tostring(e.name) .. ":" .. tostring((e.components or {}).eohController or "") .. ";" end
+    for i, e in ipairs(eohs or {}) do
+        hash = hash .. i .. ":" .. tostring(e.name) .. ":" .. tostring((e.components or {}).eohController or "") .. ";"
+    end
     return hash
 end
 
@@ -95,33 +110,19 @@ function drawMainScreen(selected)
     gui.draw(eohs, selected or 1, config.hubName .. " v" .. config.version, runtimes)
 end
 
-local detailCache = {lastNotice=nil, lastRuntime=nil, lastIndex=nil}
+local detailCache = {signature=nil, notice=nil, index=nil}
 local lastDetailUpdate = 0
-local detailUpdateInterval = 0.3
+local detailUpdateInterval = 0.5
 
-local function confirmDelete(index)
-    local eoh = registry.getEOH(index)
-    if not eoh then return false end
-    gui.drawConfirmDelete(eoh)
-    while true do
-        local _, _, charCode, keyCode = event.pull("key_down")
-        local char = keyToChar(charCode)
-        if keyCode and (keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28) then
-            return true
-        elseif char == "q" or char == "Q" or isLetter(charCode, keyCode, "b", 48) or keyCode == keyboard.keys.backspace or keyCode == 14 then
-            return false
-        end
+local function runtimeSignature(runtime)
+    runtime = runtime or {}
+    local progress = tonumber(runtime.progress) or 0
+    local maximum = tonumber(runtime.maximum) or 0
+    local percent = 0
+    if maximum > 0 then
+        percent = math.floor(math.max(0, math.min(1, progress / maximum)) * 100)
     end
-end
-
-local function deleteSelected(index)
-    local eoh = registry.getEOH(index)
-    if not eoh then return false end
-    if not confirmDelete(index) then return false end
-    local name = eoh.name
-    local ok = registry.removeEOH(index)
-    if ok then logger:info("MAIN", "Deleted EOH #" .. tostring(index) .. " (" .. tostring(name) .. ")") end
-    return ok
+    return tostring(runtime.stage or "OFF") .. ":" .. tostring(percent)
 end
 
 local function showDetail(index)
@@ -132,17 +133,24 @@ local function showDetail(index)
     while true do
         local now = computer.uptime()
         local runtime = core.getRuntimeState(eoh.components)
-        local runtimeChanged = (detailCache.lastRuntime ~= runtime) or (detailCache.lastIndex ~= index) or (notice ~= detailCache.lastNotice)
-        if needsRedraw or runtimeChanged or (now - lastDetailUpdate >= detailUpdateInterval) then
+        local signature = runtimeSignature(runtime)
+        local changed = detailCache.signature ~= signature
+            or detailCache.index ~= index
+            or detailCache.notice ~= notice
+
+        -- Не перерисовываем весь экран каждые 0.3 секунды.
+        -- Обновляем только при изменении состояния/процента или раз в 0.5 с,
+        -- если нужен живой статус.
+        if needsRedraw or changed or (now - lastDetailUpdate >= detailUpdateInterval and signature ~= detailCache.signature) then
             gui.drawDetail(eoh, notice, runtime)
-            detailCache.lastNotice = notice
-            detailCache.lastRuntime = runtime
-            detailCache.lastIndex = index
-            detailCache.lastDrawTime = now
+            detailCache.signature = signature
+            detailCache.notice = notice
+            detailCache.index = index
             lastDetailUpdate = now
             needsRedraw = false
         end
         notice = nil
+
         local _, _, charCode, keyCode = event.pull(0.1, "key_down")
         local char = keyToChar(charCode)
         if keyCode and (keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28) then
@@ -155,7 +163,7 @@ local function showDetail(index)
         elseif keyCode and isKey(keyCode, keyboard.keys.f1, 59) then
             setup.runSetup()
             needsRedraw = true
-        elseif isLetter(charCode, keyCode, "b", 48) or keyCode == 14 then
+        elseif isBackKey(charCode, keyCode) then
             return
         elseif isKey(keyCode, keyboard.keys.f3, 61) then
             needsRedraw = true
@@ -208,7 +216,7 @@ function configureEOH(index)
         elseif keyCode and (keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28) or char == "s" or char == "S" then
             if computer.uptime() >= inputEnabledAt then registry.updateEOH(index, settings); break end
         elseif char == "r" or char == "R" then registry.updateEOH(index, settings); core.startConfiguredCycle(eoh.components, settings); break
-        elseif isLetter(charCode, keyCode, "b", 48) or keyCode == 14 then break end
+        elseif isBackKey(charCode, keyCode) then break end
         drawSettings()
     end
 end
