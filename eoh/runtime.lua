@@ -4,6 +4,7 @@ local component = require("component")
 local computer = require("computer")
 
 local M = {}
+local CACHE_TTL = 0.5
 
 local function readValue(address, method, ...)
     local ok, value = pcall(component.invoke, address, method, ...)
@@ -18,9 +19,7 @@ end
 local function readBoolean(address, methods)
     for _, method in ipairs(methods) do
         local value = readValue(address, method)
-        if type(value) == "boolean" then
-            return value
-        end
+        if type(value) == "boolean" then return value end
     end
     return nil
 end
@@ -53,13 +52,11 @@ local function sensorAmount(info, english, russian)
 end
 
 local function readActive(address)
-    local value = readBoolean(address, {"isMachineActive", "isActive", "isWorking"})
-    return value == true
+    return readBoolean(address, {"isMachineActive", "isActive", "isWorking"}) == true
 end
 
 local function readHasWork(address)
-    local value = readBoolean(address, {"hasWork", "isWorking"})
-    return value
+    return readBoolean(address, {"hasWork", "isWorking"})
 end
 
 local function readWorkAllowed(address)
@@ -130,31 +127,72 @@ function M.getStatus(ctx)
     return status
 end
 
-function M.getRuntimeState(ctx)
+local function copyStatus(status)
+    local result = {}
+    for key, value in pairs(status or {}) do result[key] = value end
+    return result
+end
+
+local function buildRuntime(ctx, status)
     local address = ctx.components.eoh or ctx.components.eohController
-    if not address then return {stage = "OFF", message = "Controller not configured"} end
+    local manual = address and ctx.runtime[address] or nil
+    local value = copyStatus(status)
+
+    if status.error then
+        value.stage = "OFF"
+        value.message = status.error
+    elseif manual and manual.stage == "ERROR" then
+        value.stage = "ERROR"
+        value.message = manual.message
+    elseif status.active or status.hasWork == true then
+        value.stage = "WORK"
+        value.message = manual and manual.message or nil
+    elseif status.workAllowed == false then
+        value.stage = "OFF"
+        value.message = "Work disabled"
+    elseif manual and manual.stage and manual.stage ~= "OFF" then
+        value.stage = manual.stage
+        value.message = manual.message
+    else
+        value.stage = "READY"
+        value.message = "Ready"
+    end
+
+    value.progress = status.progress
+    value.maximum = status.maxProgress
+    value.updatedAt = computer.uptime()
+    value.version = (ctx.runtimeVersion or 0) + 1
+    return value
+end
+
+function M.refresh(ctx, force)
+    local address = ctx.components.eoh or ctx.components.eohController
+    if not address then
+        return {stage="OFF", message="Controller not configured", updatedAt=computer.uptime(), version=ctx.runtimeVersion or 0}
+    end
+
     local now = computer.uptime()
     local cached = ctx.runtimeCache[address]
-    if cached and now - cached.at < 0.5 then return cached.value end
-    local status = M.getStatus(ctx)
-    local value
-    if status.error then
-        value = {stage = "OFF", message = status.error}
-    elseif status.active or status.hasWork == true then
-        value = {stage = "WORK", progress = status.progress, maximum = status.maxProgress}
-    elseif status.workAllowed == false then
-        value = {stage = "OFF", message = "Work disabled"}
-    else
-        value = ctx.runtime[address] or {stage = "READY", message = "Ready"}
+    if not force and cached and now - cached.at < CACHE_TTL then
+        return cached.value
     end
-    ctx.runtimeCache[address] = {at = now, value = value}
+
+    local status = M.getStatus(ctx)
+    local value = buildRuntime(ctx, status)
+    ctx.runtimeVersion = (ctx.runtimeVersion or 0) + 1
+    value.version = ctx.runtimeVersion
+    ctx.runtimeCache[address] = {at=now, value=value}
     return value
+end
+
+function M.getRuntimeState(ctx)
+    return M.refresh(ctx, false)
 end
 
 function M.set(ctx, stage, message)
     local address = ctx.components.eoh or ctx.components.eohController
     if address then
-        ctx.runtime[address] = {stage = stage, message = message}
+        ctx.runtime[address] = {stage=stage, message=message, setAt=computer.uptime()}
         ctx.runtimeCache[address] = nil
     end
 end
