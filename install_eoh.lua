@@ -12,7 +12,7 @@ local serialization = require("serialization")
 local term = require("term")
 
 local REPO = "https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling/main"
-local VERSION = "20260906-2302"
+local VERSION = "20260908-1700"
 local PROTECTED = "/home/eoh_data"
 
 local FILES = {
@@ -151,8 +151,6 @@ local function install()
     local data, downloadErr = fetch(REPO .. src)
     if not data then print("FAIL"); error(src .. ": " .. tostring(downloadErr)) end
 
-    -- Do not search for '<html' or other substrings: valid Lua text may contain them.
-    -- Syntax validation is the reliable check for Lua sources.
     if src:sub(-4) == ".lua" then
       local valid, syntaxErr = checkLua(data, src)
       if not valid then print("FAIL"); error("Синтаксическая ошибка в " .. src .. ": " .. tostring(syntaxErr)) end
