@@ -8,7 +8,7 @@ local component = require("component")
 local event = require("event")
 local keyboard = require("keyboard")
 local computer = require("computer")
-local filesystem = require("filesystem")
+local term = require("term")
 local registry = require("registry")
 local scanner = require("scanner")
 local theme = require("theme")
@@ -72,12 +72,12 @@ local function waitKey()
     end
 end
 
-local function selectedLoop(title, items, selected, renderItem, allowEmpty)
+local function selectedLoop(title, items, selected, renderItem, allowEmpty, step)
     selected = selected or 1
     if #items == 0 and not allowEmpty then return nil, "empty" end
     while true do
         clear()
-        header(title, 1)
+        header(title, step or 1)
         if #items == 0 then
             text(4, 7, "Нет доступных вариантов.", C.warn)
             footer("", "Cancel")
@@ -164,7 +164,7 @@ local function transposerText(item)
     return role .. " | " .. fluid .. " | " .. side .. " | " .. tostring(item.address):sub(1, 18)
 end
 
-local function pickTransposer(title, transposers, used, wantedRole, current)
+local function pickTransposer(title, transposers, used, wantedRole, current, step)
     local list = {}
     for _, item in ipairs(transposers or {}) do
         if not used[item.address] or item.address == current then
@@ -176,21 +176,23 @@ local function pickTransposer(title, transposers, used, wantedRole, current)
         end
     end
     if #list == 0 then return nil, "empty" end
-    return selectedLoop(title, list, 1, transposerText, false)
+    return selectedLoop(title, list, 1, transposerText, false, step)
 end
 
-local function configureNumber(title, values, current)
+local function configureNumber(title, values, current, step)
     local items = {}
     for _, value in ipairs(values) do items[#items + 1] = value end
-    local chosen, reason = selectedLoop(title, items, 1, function(v) return tostring(v) end, false)
+    local selected = 1
+    for i, value in ipairs(items) do if tonumber(value) == tonumber(current) then selected = i end end
+    local chosen, reason = selectedLoop(title, items, selected, function(v) return tostring(v) end, false, step)
     if not chosen then return nil, reason end
     return tonumber(chosen) or chosen
 end
 
-local function configureChoice(title, values, current)
+local function configureChoice(title, values, current, step)
     local selected = 1
     for i, value in ipairs(values) do if value.value == current then selected = i end end
-    local chosen, reason = selectedLoop(title, values, selected, function(v) return v.label end, false)
+    local chosen, reason = selectedLoop(title, values, selected, function(v) return v.label end, false, step)
     if not chosen then return nil, reason end
     return chosen.value
 end
@@ -241,12 +243,10 @@ function runSetup(targetIndex)
         return
     end
 
-    local controller, reason = selectedLoop("ВЫБОР КОНТРОЛЛЕРА EOH", candidates, 1, function(item)
-        return controllerText(item)
-    end, false)
+    local controller = selectedLoop("ВЫБОР КОНТРОЛЛЕРА EOH", candidates, 1, controllerText, false, 1)
     if not controller then return end
 
-    local tier = configureNumber("ВЫБОР TIER", {1,2,3,4,5,6,7,8,9}, settings.tier)
+    local tier = configureNumber("ВЫБОР TIER", {1,2,3,4,5,6,7,8,9}, settings.tier, 2)
     if not tier then return end
     settings.tier = tier
 
@@ -260,19 +260,19 @@ function runSetup(targetIndex)
         {value="Venus", label="Venus"},
         {value="Mercury", label="Mercury"},
     }
-    local planet = configureChoice("ВЫБОР ПЛАНЕТЫ", planets, settings.planet)
+    local planet = configureChoice("ВЫБОР ПЛАНЕТЫ", planets, settings.planet, 3)
     if not planet then return end
     settings.planet = planet
 
     local aa = configureChoice("ANTIMATTER (AA)", {
         {value="production", label="AA: OFF — обычное производство"},
         {value="aa", label="AA: ON — производство плазмы"},
-    }, settings.mode)
+    }, settings.mode, 4)
     if not aa then return end
     settings.mode = aa
     settings.useAA = aa == "aa"
 
-    local oc = configureNumber("OVERCLOCK", {0,1,2,3}, settings.overclocks)
+    local oc = configureNumber("OVERCLOCK", {0,1,2,3}, settings.overclocks, 5)
     if not oc then return end
     settings.overclocks = oc
 
@@ -281,7 +281,7 @@ function runSetup(targetIndex)
     local used = {}
     local old = existing and existing.components or {}
 
-    local h2, r1 = pickTransposer("ПРИВЯЗКА H₂", transposers, used, "hydrogen", old.transposerH2)
+    local h2, r1 = pickTransposer("ПРИВЯЗКА H₂", transposers, used, "hydrogen", old.transposerH2, 6)
     if not h2 then
         if r1 == "back" then return end
         waitContinue("H₂ транспозер не выбран. Нужен источник водорода.")
@@ -289,7 +289,7 @@ function runSetup(targetIndex)
     end
     used[h2.address] = true
 
-    local he, r2 = pickTransposer("ПРИВЯЗКА He", transposers, used, "helium", old.transposerHe)
+    local he, r2 = pickTransposer("ПРИВЯЗКА He", transposers, used, "helium", old.transposerHe, 7)
     if not he then
         if r2 == "back" then return end
         waitContinue("He транспозер не выбран. Нужен источник гелия.")
@@ -299,12 +299,11 @@ function runSetup(targetIndex)
 
     local plasma
     if settings.mode == "aa" then
-        plasma = pickTransposer("ПРИВЯЗКА PLASMA", transposers, used, "plasma", old.transposerPlasma)
+        plasma = pickTransposer("ПРИВЯЗКА PLASMA", transposers, used, "plasma", old.transposerPlasma, 8)
         if not plasma then
             waitContinue("Для AA нужен плазменный транспозер.")
             return
         end
-        plasma = plasma
         used[plasma.address] = true
     end
 
@@ -336,9 +335,7 @@ function runSetup(targetIndex)
 
     local ok, why = summary(settings, controller, h2, he, plasma)
     if not ok then
-        if why == "back" then
-            return runSetup(targetIndex)
-        end
+        if why == "back" then return end
         return
     end
 
