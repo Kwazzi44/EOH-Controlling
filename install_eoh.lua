@@ -12,7 +12,7 @@ local serialization = require("serialization")
 local term = require("term")
 
 local REPO = "https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling/main"
-local VERSION = "20260908-1700"
+local VERSION = "20260908-1701"
 local PROTECTED = "/home/eoh_data"
 
 local FILES = {
@@ -129,7 +129,7 @@ local function install()
 
   print("")
   print("[1/3] Проверка GitHub...")
-  local probe, probeErr = fetch(REPO .. "/README.md")
+  local probe, probeErr = fetch(REPO .. "/README.md?v=" .. VERSION)
   if not probe then error("Нет подключения к GitHub: " .. tostring(probeErr)) end
   print("  OK")
 
@@ -143,12 +143,12 @@ local function install()
 
   print("")
   print("[3/3] Скачивание и установка файлов...")
-  print("  Файлы проверяются в RAM перед записью; временная копия на диске не создаётся.")
+  print("  Cache-busting включён: загружается именно версия " .. VERSION .. ".")
 
   for i, src in ipairs(FILES) do
     local dst = "/home" .. src
     io.write(string.format("  [%02d/%02d] %s ... ", i, #FILES, src))
-    local data, downloadErr = fetch(REPO .. src)
+    local data, downloadErr = fetch(REPO .. src .. "?v=" .. VERSION)
     if not data then print("FAIL"); error(src .. ": " .. tostring(downloadErr)) end
 
     if src:sub(-4) == ".lua" then
