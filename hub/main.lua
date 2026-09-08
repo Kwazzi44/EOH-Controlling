@@ -23,8 +23,7 @@ local function checkModules()
     }
     for _, mod in ipairs(modules) do
         if not filesystem.exists(mod.path) then
-            print("❌ Ошибка: файл " .. mod.path .. " не найден!")
-            print("Убедитесь, что все файлы установлены.")
+            print("Ошибка: файл " .. mod.path .. " не найден!")
             os.sleep(3)
             return false
         end
@@ -45,16 +44,15 @@ local gui = require("gui")
 gui.setBuild(core.build)
 gui.init()
 
-local function keyToChar(key)
-    if type(key) == "number" and key >= 0 and key <= 255 then
-        return string.char(key)
+local function keyToChar(charCode)
+    if type(charCode) == "number" and charCode >= 0 and charCode <= 255 then
+        return string.char(charCode)
     end
     return ""
 end
 
--- OpenComputers: key_down = address, character, keyCode, player.
--- Не используем filter в event.pull: на некоторых сборках/версиях OC
--- это приводило к тому, что клавиатурные события не доходили до меню.
+-- OpenComputers key_down: address, character, keyCode, player.
+-- События читаем без фильтра, затем сами проверяем тип события.
 local function pullKey(timeout)
     local eventName, address, charCode, keyCode, player = event.pull(timeout)
     if eventName == "key_down" then
@@ -63,14 +61,26 @@ local function pullKey(timeout)
     return false, nil, nil, nil
 end
 
-local function isKeyCode(keyCode, namedKey, fallback)
+local function physicalKeyDown(code)
+    if not code or type(keyboard.isKeyDown) ~= "function" then return false end
+    local ok, down = pcall(keyboard.isKeyDown, code)
+    return ok and down == true
+end
+
+local function keyMatches(keyCode, namedKey, fallback)
     return keyCode == namedKey or keyCode == fallback
 end
 
-local function isRunKey(charCode, keyCode)
-    return charCode == string.byte("r")
-        or charCode == string.byte("R")
-        or keyCode == 19
+local function isF1(keyCode)
+    return keyMatches(keyCode, keyboard.keys.f1, 59)
+end
+
+local function isF3(keyCode)
+    return keyMatches(keyCode, keyboard.keys.f3, 61)
+end
+
+local function isDelete(keyCode)
+    return keyMatches(keyCode, keyboard.keys.delete, 211)
 end
 
 local function isBackKey(charCode, keyCode)
@@ -82,16 +92,11 @@ local function isBackKey(charCode, keyCode)
         or keyCode == 14
 end
 
-local function isF1(keyCode)
-    return keyCode == keyboard.keys.f1 or keyCode == 59
-end
-
-local function isF3(keyCode)
-    return keyCode == keyboard.keys.f3 or keyCode == 61
-end
-
-local function isDelete(keyCode)
-    return keyCode == keyboard.keys.delete or keyCode == 211
+local function isRunKey(charCode, keyCode)
+    return charCode == string.byte("r")
+        or charCode == string.byte("R")
+        or keyCode == keyboard.keys.r
+        or keyCode == 19
 end
 
 local guiCache = {eohsHash=nil, runtimesHash=nil, selected=nil}
@@ -158,11 +163,12 @@ local function showDetail(index)
 
     local notice = nil
     local needsRedraw = true
-
-    -- Сбрасываем кэш при каждом входе в Detail.
     detailCache.signature = nil
     detailCache.notice = nil
     detailCache.index = nil
+
+    -- Латчи не дают R/B/F3 срабатывать несколько раз за одно удержание.
+    local keyLatch = {b=false, r=false, f3=false}
 
     while true do
         local now = computer.uptime()
@@ -182,7 +188,9 @@ local function showDetail(index)
         end
         notice = nil
 
-        local gotKey, charCode, keyCode = pullKey(0.1)
+        local gotKey, charCode, keyCode = pullKey(0.05)
+        local handled = false
+
         if gotKey then
             local char = keyToChar(charCode)
 
@@ -191,26 +199,74 @@ local function showDetail(index)
                 or keyCode == 28 then
                 configureEOH(index)
                 needsRedraw = true
-
-            elseif isRunKey(charCode, keyCode) then
-                local started, message = core.startConfiguredCycle(eoh.components, eoh.settings or {})
-                notice = started
-                    and "RUN: recipe cycle started"
-                    or "RUN BLOCKED: " .. tostring(message)
-                needsRedraw = true
+                handled = true
 
             elseif isF1(keyCode) then
                 setup.runSetup()
                 needsRedraw = true
+                handled = true
 
             elseif isF3(keyCode) then
                 registry.load()
                 eoh = registry.getEOH(index) or eoh
                 needsRedraw = true
+                handled = true
+            end
 
-            elseif isBackKey(charCode, keyCode) then
+            -- Для букв сначала пробуем реальное keyCode, затем polling ниже.
+            if not handled and isRunKey(charCode, keyCode) then
+                local started, message = core.startConfiguredCycle(eoh.components, eoh.settings or {})
+                notice = started
+                    and "RUN: recipe cycle started"
+                    or "RUN BLOCKED: " .. tostring(message)
+                needsRedraw = true
+                keyLatch.r = true
+                handled = true
+            end
+
+            if not handled and isBackKey(charCode, keyCode) then
                 return
             end
+        end
+
+        -- Некоторые сборки OC/моды Minecraft передают буквенные клавиши
+        -- нестабильно через key_down. Поэтому для B/R/F3 есть второй,
+        -- физический путь через keyboard.isKeyDown().
+        local bDown = physicalKeyDown(keyboard.keys.b or 48)
+        local rDown = physicalKeyDown(keyboard.keys.r or 19)
+        local f3Down = physicalKeyDown(keyboard.keys.f3 or 61)
+
+        if bDown then
+            if not keyLatch.b then
+                keyLatch.b = true
+                return
+            end
+        else
+            keyLatch.b = false
+        end
+
+        if rDown then
+            if not keyLatch.r then
+                keyLatch.r = true
+                local started, message = core.startConfiguredCycle(eoh.components, eoh.settings or {})
+                notice = started
+                    and "RUN: recipe cycle started"
+                    or "RUN BLOCKED: " .. tostring(message)
+                needsRedraw = true
+            end
+        else
+            keyLatch.r = false
+        end
+
+        if f3Down then
+            if not keyLatch.f3 then
+                keyLatch.f3 = true
+                registry.load()
+                eoh = registry.getEOH(index) or eoh
+                needsRedraw = true
+            end
+        else
+            keyLatch.f3 = false
         end
 
         eoh = registry.getEOH(index) or eoh
@@ -220,7 +276,7 @@ end
 function configureEOH(index)
     local eoh = registry.getEOH(index)
     if not eoh then
-        print("❌ EOH #" .. index .. " не найден")
+        print("EOH #" .. index .. " не найден")
         os.sleep(1)
         return
     end
@@ -308,7 +364,7 @@ function configureEOH(index)
                     registry.updateEOH(index, settings)
                     break
                 end
-            elseif char == "r" or char == "R" or keyCode == 19 then
+            elseif char == "r" or char == "R" or keyCode == keyboard.keys.r or keyCode == 19 then
                 registry.updateEOH(index, settings)
                 core.startConfiguredCycle(eoh.components, settings)
                 break
@@ -318,6 +374,39 @@ function configureEOH(index)
             drawSettings()
         end
     end
+end
+
+local function confirmDelete(index)
+    local eoh = registry.getEOH(index)
+    if not eoh then return false end
+    gui.drawConfirmDelete(eoh)
+    while true do
+        local gotKey, charCode, keyCode = pullKey(nil)
+        if gotKey then
+            local char = keyToChar(charCode)
+            if keyCode == keyboard.keys.enter
+                or keyCode == keyboard.keys.numpadenter
+                or keyCode == 28 then
+                return true
+            elseif isBackKey(charCode, keyCode)
+                or char == "q"
+                or char == "Q" then
+                return false
+            end
+        end
+    end
+end
+
+local function deleteSelected(index)
+    local eoh = registry.getEOH(index)
+    if not eoh then return false end
+    if not confirmDelete(index) then return false end
+    local name = eoh.name
+    local ok = registry.removeEOH(index)
+    if ok then
+        logger:info("MAIN", "Deleted EOH #" .. tostring(index) .. " (" .. tostring(name) .. ")")
+    end
+    return ok
 end
 
 local dataDirty = true
@@ -404,19 +493,13 @@ end
 local ok, err = pcall(main)
 if not ok then
     term.clear()
-    print("╔════════════════════════════════════════════════════════════════╗")
-    print("║                    КРИТИЧЕСКАЯ ОШИБКА                        ║")
-    print("╚════════════════════════════════════════════════════════════════╝")
+    print("============================================")
+    print("КРИТИЧЕСКАЯ ОШИБКА")
+    print("============================================")
     print("")
-    print("❌ " .. tostring(err))
+    print(tostring(err))
     print("")
-    print("📖 Проверьте:")
-    print("  1. Все файлы установлены в /home/hub/")
-    print("  2. Файл /home/lib/logger.lua существует")
-    print("  3. Файл /home/hub/registry.lua существует")
-    print("  4. Файл /home/hub/setup.lua существует")
-    print("  5. Файл /home/eoh/eoh_core.lua существует")
-    print("")
+    print("Проверьте установку файлов /home/hub/ и /home/eoh/")
     print("Программа остановлена через 10 секунд...")
     os.sleep(10)
 end
