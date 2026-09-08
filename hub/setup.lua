@@ -1,16 +1,14 @@
--- EOH SETUP
--- Guided GUI for selecting an EOH controller, operating parameters and hardware.
--- User configuration is persisted through registry/database; code remains updateable.
-
+-- ============================================
+-- SETUP.LUA - Guided EOH configuration
+-- ============================================
 package.path = "/home/?.lua;/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
 
 local component = require("component")
-local event = require("event")
-local keyboard = require("keyboard")
-local computer = require("computer")
 local term = require("term")
+local input = require("input")
 local registry = require("registry")
 local scanner = require("scanner")
+local recipes = require("recipes")
 local theme = require("theme")
 
 local gpu = component.isAvailable("gpu") and component.gpu or nil
@@ -19,345 +17,140 @@ local W, H = 80, 25
 
 local function initScreen()
     if not gpu then return end
-    gpu.setDepth(gpu.maxDepth())
-    theme.init(gpu)
-    W, H = theme.getRes()
+    gpu.setDepth(gpu.maxDepth()); theme.init(gpu); W, H = theme.getRes()
 end
-
-local function clear()
-    if gpu then
-        theme.gfill(1, 1, W, H, " ", C.text, C.bg)
-    else
-        term.clear()
-    end
+local function clear() if gpu then theme.gfill(1,1,W,H," ",C.text,C.bg) else term.clear() end end
+local function text(x,y,value,color,bg)
+    value=tostring(value or "")
+    if gpu then theme.gset(x,y,value:sub(1,math.max(0,W-x+1)),color or C.text,bg or C.bg) else print(value) end
 end
-
-local function text(x, y, value, color, bg)
-    value = tostring(value or "")
-    if gpu then
-        theme.gset(x, y, value:sub(1, math.max(0, W - x + 1)), color or C.text, bg or C.bg)
-    else
-        print(value)
-    end
+local function header(title,step)
+    if not gpu then clear(); print("=== "..title.." ==="); return end
+    theme.gfill(1,1,W,H," ",C.text,C.bg); theme.drawHeader(title,string.format("STEP %d/8",step or 1))
 end
-
-local function header(title, step)
-    if not gpu then
-        clear()
-        print("=== " .. title .. " ===")
-        return
-    end
-    theme.gfill(1, 1, W, H, " ", C.text, C.bg)
-    theme.drawHeader(title, string.format("STEP %d/8", step or 1))
-    theme.gset(1, 4, "+" .. string.rep("=", W - 2) .. "+", C.border, C.bg)
+local function footer()
+    if gpu then theme.drawFooter({{"Up/Down","Select"},{"Enter","Select"},{"Backspace","Back"}})
+    else print("[Up/Down] select  [Enter] select  [Backspace] back") end
 end
-
-local function footer(backLabel, nextLabel)
-    if gpu then
-        theme.drawFooter({
-            {"Up/Down", "Select"},
-            {"Enter", nextLabel or "Next"},
-            {"Backspace", backLabel or "Back"},
-        })
-    else
-        print("[Up/Down] select  [Enter] next  [Backspace] back")
-    end
-end
-
-local function waitKey()
-    while true do
-        local _, _, charCode, keyCode = event.pull("key_down")
-        return charCode, keyCode
-    end
-end
-
-local function selectedLoop(title, items, selected, renderItem, allowEmpty, step)
-    selected = selected or 1
-    if #items == 0 and not allowEmpty then return nil, "empty" end
-    while true do
-        clear()
-        header(title, step or 1)
-        if #items == 0 then
-            text(4, 7, "Нет доступных вариантов.", C.warn)
-            footer("", "Cancel")
-        else
-            for i, item in ipairs(items) do
-                local y = 6 + i
-                local active = i == selected
-                if y < H - 3 then
-                    if gpu then theme.gfill(3, y, W - 6, 1, " ", C.text, active and C.sel_bg or C.bg) end
-                    text(5, y, (active and "> " or "  ") .. tostring(renderItem(item, i)),
-                        active and C.sel_fg or C.text, active and C.sel_bg or C.bg)
-                end
-            end
-            footer("Back", "Select")
-        end
-        local _, keyCode = waitKey()
-        if keyCode == keyboard.keys.up then
-            selected = math.max(1, selected - 1)
-        elseif keyCode == keyboard.keys.down then
-            selected = math.min(math.max(1, #items), selected + 1)
-        elseif keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28 then
-            if #items > 0 then return items[selected], selected end
-        elseif keyCode == keyboard.keys.backspace or keyCode == 14 then
-            return nil, "back"
-        end
-    end
-end
-
 local function waitContinue(message)
-    if gpu then
-        text(3, H - 4, message or "Нажмите Enter для продолжения.", C.warn)
-    else
-        print(message or "Нажмите Enter для продолжения.")
-    end
+    text(3,H-4,message or "ENTER = continue",C.warn)
+    while true do local key=input.wait(nil); if input.is(key,"enter") then return true end; if input.is(key,"back") then return false end end
+end
+local function selectedLoop(title,items,selected,renderItem,step)
+    if #items==0 then return nil,"empty" end; selected=selected or 1
     while true do
-        local _, keyCode = waitKey()
-        if keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28 then return true end
-        if keyCode == keyboard.keys.backspace or keyCode == 14 then return false end
+        clear(); header(title,step)
+        for i,item in ipairs(items) do
+            local y=6+i
+            if y<H-3 then
+                local active=i==selected
+                if gpu then theme.gfill(3,y,W-6,1," ",C.text,active and C.sel_bg or C.bg) end
+                text(5,y,(active and "> " or "  ")..tostring(renderItem(item,i)),active and C.sel_fg or C.text,active and C.sel_bg or C.bg)
+            end
+        end
+        footer(); local key=input.wait(nil)
+        if input.is(key,"up") then selected=math.max(1,selected-1)
+        elseif input.is(key,"down") then selected=math.min(#items,selected+1)
+        elseif input.is(key,"enter") then return items[selected],selected
+        elseif input.is(key,"back") then return nil,"back" end
     end
 end
-
 local function componentAddress(value)
-    if type(value) == "string" then return value end
-    if type(value) == "table" then return value.address end
+    if type(value)=="string" then return value end
+    if type(value)=="table" then return value.address end
     return nil
 end
-
 local function buildExcluded(targetIndex)
-    local excluded = {}
-    for index, eoh in ipairs(registry.getAll()) do
-        if index ~= targetIndex then
-            local function claim(value)
-                local address = componentAddress(value)
-                if address then excluded[address] = true; return end
-                if type(value) == "table" then
-                    for _, item in pairs(value) do claim(item) end
-                end
-            end
-            claim(eoh.components or {})
-            claim(eoh.controllers or {})
+    local excluded={}
+    for index,eoh in ipairs(registry.getAll()) do
+        if index~=targetIndex then
+            local c=eoh.components or {}
+            local fields={c.eoh,c.eohController,c.transposerH2,c.transposerHydrogen,c.transposerHe,c.transposerHelium,c.transposerPlasma}
+            for _,value in ipairs(fields) do local address=componentAddress(value); if address then excluded[address]=true end end
+            for _,value in ipairs(c.transposerPlasmaList or {}) do local address=componentAddress(value); if address then excluded[address]=true end end
+            for _,value in ipairs(c.transposers or {}) do local address=componentAddress(value); if address then excluded[address]=true end end
         end
     end
     return excluded
 end
-
-local function scanHardware(targetIndex)
-    local result = scanner.scan(buildExcluded(targetIndex), {})
-    local candidates = result.controllerCandidates or {}
-    table.sort(candidates, function(a, b) return (a.name or "") < (b.name or "") end)
-    return result, candidates
-end
-
-local function controllerText(item)
-    local name = tostring(item.name or "gt_machine")
-    return name .. " [" .. tostring(item.address):sub(1, 18) .. "]"
-end
-
+local function scanHardware(targetIndex) return scanner.scan(buildExcluded(targetIndex),{}) end
+local function controllerText(item) return tostring(item.name or "gt_machine").." ["..tostring(item.address):sub(1,18).."]" end
 local function transposerText(item)
-    local role = item.role and string.upper(item.role) or "UNASSIGNED"
-    local fluid = item.fluid and tostring(item.fluid) or "empty/unknown"
-    local side = item.sourceSideName and tostring(item.sourceSideName) or "?"
-    return role .. " | " .. fluid .. " | " .. side .. " | " .. tostring(item.address):sub(1, 18)
+    return (item.role and string.upper(item.role) or "UNASSIGNED").." | "..tostring(item.fluid or "empty/unknown").." | "..tostring(item.sourceSideName or "?").." | "..tostring(item.address):sub(1,18)
 end
-
-local function pickTransposer(title, transposers, used, wantedRole, current, step)
-    local list = {}
-    for _, item in ipairs(transposers or {}) do
-        if not used[item.address] or item.address == current then
-            local roleOk = true
-            if wantedRole and item.role and item.role ~= wantedRole and item.address ~= current then
-                roleOk = false
-            end
-            if roleOk then list[#list + 1] = item end
-        end
+local function chooseNumber(title,values,current,step)
+    local selected=1; for i,value in ipairs(values) do if tonumber(value)==tonumber(current) then selected=i end end
+    local chosen,reason=selectedLoop(title,values,selected,tostring,step); if not chosen then return nil,reason end; return tonumber(chosen)
+end
+local function chooseTransposer(title,transposers,used,role,current,step)
+    local list={}
+    for _,item in ipairs(transposers or {}) do
+        local free=not used[item.address] or item.address==current
+        local roleOk=not item.role or item.role==role or item.address==current
+        if free and roleOk then list[#list+1]=item end
     end
-    if #list == 0 then return nil, "empty" end
-    return selectedLoop(title, list, 1, transposerText, false, step)
+    if #list==0 then return nil,"empty" end
+    return selectedLoop(title,list,1,transposerText,step)
 end
-
-local function configureNumber(title, values, current, step)
-    local items = {}
-    for _, value in ipairs(values) do items[#items + 1] = value end
-    local selected = 1
-    for i, value in ipairs(items) do if tonumber(value) == tonumber(current) then selected = i end end
-    local chosen, reason = selectedLoop(title, items, selected, function(v) return tostring(v) end, false, step)
-    if not chosen then return nil, reason end
-    return tonumber(chosen) or chosen
+local function showPlanet(tier,step)
+    local recipe=recipes.get(tier); clear(); header("ПЛАНЕТА",step)
+    text(5,8,"Tier T"..tostring(tier),C.title); text(5,10,"Planet: "..tostring(recipe and recipe.planet or "-"),C.ok)
+    text(5,12,"Star Matter: "..tostring(recipe and recipe.starMatter or "-"),C.text)
+    text(5,14,"Эта планета определяется выбранным Tier.",C.dim)
+    return waitContinue("ENTER = продолжить")
 end
-
-local function configureChoice(title, values, current, step)
-    local selected = 1
-    for i, value in ipairs(values) do if value.value == current then selected = i end end
-    local chosen, reason = selectedLoop(title, values, selected, function(v) return v.label end, false, step)
-    if not chosen then return nil, reason end
-    return chosen.value
-end
-
-local function summary(settings, controller, h2, he, plasma)
-    clear()
-    header("ПОДТВЕРЖДЕНИЕ EOH", 8)
-    local rows = {
-        "Controller: " .. tostring(controller and controller.name or "-"),
-        "Address:    " .. tostring(controller and controller.address or "-"),
-        "Tier:       T" .. tostring(settings.tier),
-        "Planet:     " .. tostring(settings.planet),
-        "AA:         " .. (settings.mode == "aa" and "ON" or "OFF"),
-        "Overclock:  " .. tostring(settings.overclocks),
-        "Hydrogen:   " .. tostring(h2 and h2.address or "-"),
-        "Helium:     " .. tostring(he and he.address or "-"),
-        "Plasma:     " .. tostring(plasma and plasma.address or "-"),
-    }
-    for i, row in ipairs(rows) do text(4, 5 + i, row, C.text) end
-    text(4, H - 5, "ENTER = сохранить    BACKSPACE = назад", C.warn)
-    while true do
-        local _, keyCode = waitKey()
-        if keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28 then return true end
-        if keyCode == keyboard.keys.backspace or keyCode == 14 then return false, "back" end
-    end
+local function summary(settings,controller,h2,he,plasma)
+    clear(); header("ПОДТВЕРЖДЕНИЕ EOH",7)
+    local rows={
+        "Controller: "..tostring(controller and controller.name or "-"),"Address:    "..tostring(controller and controller.address or "-"),
+        "Tier:       T"..tostring(settings.tier),"Planet:     "..tostring(settings.planet),"AA:         "..(settings.useAA and "ON" or "OFF"),
+        "Overclock:  "..tostring(settings.overclocks),"Hydrogen:   "..tostring(h2 and h2.address or "-"),"Helium:     "..tostring(he and he.address or "-"),
+        "Plasma:     "..tostring(plasma and plasma.address or "-"),}
+    for i,row in ipairs(rows) do text(4,5+i,row,C.text) end
+    return waitContinue("ENTER = сохранить   BACKSPACE = назад")
 end
 
 function runSetup(targetIndex)
     initScreen()
+    local existing=targetIndex and registry.getEOH(targetIndex) or nil; local old=existing and existing.components or {}
+    local settings={}; for key,value in pairs((existing and existing.settings) or {}) do settings[key]=value end
+    settings.tier=tonumber(settings.tier) or 3; settings.overclocks=tonumber(settings.overclocks) or 0; settings.useAA=settings.useAA==true
+    settings.mode=settings.mode=="power" and "power" or "production"
 
-    local existing = targetIndex and registry.getEOH(targetIndex) or nil
-    local settings = {}
-    for k, v in pairs((existing and existing.settings) or {}) do settings[k] = v end
-    settings.tier = tonumber(settings.tier) or 3
-    settings.planet = settings.planet or "Overworld"
-    settings.mode = settings.mode or "production"
-    settings.overclocks = tonumber(settings.overclocks) or 0
-    settings.autoRestart = settings.autoRestart ~= false
+    local result=scanHardware(targetIndex); local candidates=result.controllerCandidates or {}
+    table.sort(candidates,function(a,b) return tostring(a.name)<tostring(b.name) end)
+    if #candidates==0 then clear(); header("EOH SETUP",1); text(4,8,"КОНТРОЛЛЕР EOH НЕ НАЙДЕН",C.ring_down); text(4,10,"Ожидается Multimachine:Eye_of_Harmony",C.warn); waitContinue("ENTER = назад"); return end
 
-    local result, candidates = scanHardware(targetIndex)
-    if #candidates == 0 then
-        clear(); header("НАСТРОЙКА НОВОГО EOH", 1)
-        text(4, 7, "КОНТРОЛЛЕР EOH НЕ НАЙДЕН", C.ring_down)
-        text(4, 9, "Ожидалось имя: Multimachine:Eye_of_Harmony", C.warn)
-        text(4, 10, "Проверьте адаптер и подключение к EOH.", C.text)
-        waitContinue("ENTER = назад")
-        return
-    end
+    local controller=selectedLoop("ВЫБОР КОНТРОЛЛЕРА EOH",candidates,1,controllerText,1); if not controller then return end
+    local tier,reason=chooseNumber("ВЫБОР TIER",{1,2,3,4,5,6,7,8,9},settings.tier,2); if not tier then return end; settings.tier=tier
+    settings.planet=(recipes.get(tier) or {}).planet; if not showPlanet(tier,3) then return end
 
-    local controller = selectedLoop("ВЫБОР КОНТРОЛЛЕРА EOH", candidates, 1, controllerText, false, 1)
-    if not controller then return end
+    local aaItems={{value=false,label="AA: OFF — Hydrogen + Helium"},{value=true,label="AA: ON — Plasma"}}
+    local aaChoice=selectedLoop("ASTRAL ARRAYS",aaItems,settings.useAA and 2 or 1,function(v) return v.label end,4); if not aaChoice then return end; settings.useAA=aaChoice.value
+    local oc; oc,reason=chooseNumber("OVERCLOCK",{0,1,2,3},settings.overclocks,5); if not oc then return end; settings.overclocks=oc
 
-    local tier = configureNumber("ВЫБОР TIER", {1,2,3,4,5,6,7,8,9}, settings.tier, 2)
-    if not tier then return end
-    settings.tier = tier
-
-    local planets = {
-        {value="Overworld", label="Overworld"},
-        {value="Nether", label="Nether"},
-        {value="End", label="The End"},
-        {value="Moon", label="Moon"},
-        {value="Mars", label="Mars"},
-        {value="Asteroids", label="Asteroids"},
-        {value="Venus", label="Venus"},
-        {value="Mercury", label="Mercury"},
-    }
-    local planet = configureChoice("ВЫБОР ПЛАНЕТЫ", planets, settings.planet, 3)
-    if not planet then return end
-    settings.planet = planet
-
-    local aa = configureChoice("ANTIMATTER (AA)", {
-        {value="production", label="AA: OFF — обычное производство"},
-        {value="aa", label="AA: ON — производство плазмы"},
-    }, settings.mode, 4)
-    if not aa then return end
-    settings.mode = aa
-    settings.useAA = aa == "aa"
-
-    local oc = configureNumber("OVERCLOCK", {0,1,2,3}, settings.overclocks, 5)
-    if not oc then return end
-    settings.overclocks = oc
-
-    result, candidates = scanHardware(targetIndex)
-    local transposers = result.transposers or {}
-    local used = {}
-    local old = existing and existing.components or {}
-
-    local h2, r1 = pickTransposer("ПРИВЯЗКА H₂", transposers, used, "hydrogen", old.transposerH2, 6)
-    if not h2 then
-        if r1 == "back" then return end
-        waitContinue("H₂ транспозер не выбран. Нужен источник водорода.")
-        return
-    end
-    used[h2.address] = true
-
-    local he, r2 = pickTransposer("ПРИВЯЗКА He", transposers, used, "helium", old.transposerHe, 7)
-    if not he then
-        if r2 == "back" then return end
-        waitContinue("He транспозер не выбран. Нужен источник гелия.")
-        return
-    end
-    used[he.address] = true
-
-    local plasma
-    if settings.mode == "aa" then
-        plasma = pickTransposer("ПРИВЯЗКА PLASMA", transposers, used, "plasma", old.transposerPlasma, 8)
-        if not plasma then
-            waitContinue("Для AA нужен плазменный транспозер.")
-            return
-        end
-        used[plasma.address] = true
-    end
-
-    local components = {
-        eoh = controller.address,
-        eohController = controller.address,
-        transposerH2 = h2.address,
-        transposerHydrogen = h2.address,
-        transposerHe = he.address,
-        transposerHelium = he.address,
-        transposerPlasma = plasma and plasma.address or nil,
-        transposerPlasmaList = plasma and {plasma.address} or {},
-        transposers = {},
-    }
-    for _, item in ipairs(transposers) do
-        if used[item.address] then
-            components.transposers[#components.transposers + 1] = {
-                address = item.address,
-                role = item.address == h2.address and "hydrogen"
-                    or item.address == he.address and "helium"
-                    or item.address == (plasma and plasma.address) and "plasma" or nil,
-                sourceSide = item.sourceSide,
-                sourceSideName = item.sourceSideName,
-                targetSide = item.targetSide,
-                targetSideName = item.targetSideName,
-            }
-        end
-    end
-
-    local ok, why = summary(settings, controller, h2, he, plasma)
-    if not ok then
-        if why == "back" then return end
-        return
-    end
-
-    local id, saved
-    if existing then
-        saved = registry.updateComponents(targetIndex, components)
-        if saved then saved = registry.updateEOH(targetIndex, settings) end
-        id = targetIndex
+    result=scanHardware(targetIndex); local transposers=result.transposers or {}; local used={}; local h2,he,plasma
+    if settings.useAA then
+        plasma,reason=chooseTransposer("ПРИВЯЗКА PLASMA",transposers,used,"plasma",old.transposerPlasma,6); if not plasma then waitContinue("Для AA нужен плазменный транспозер."); return end; used[plasma.address]=true
     else
-        local name = "EOH " .. tostring(controller.name or "Controller")
-        id, saved = registry.addEOH(name, components, settings)
+        h2,reason=chooseTransposer("ПРИВЯЗКА H₂",transposers,used,"hydrogen",old.transposerH2,6); if not h2 then waitContinue("Нужен H₂ транспозер."); return end; used[h2.address]=true
+        he,reason=chooseTransposer("ПРИВЯЗКА He",transposers,used,"helium",old.transposerHe,7); if not he then waitContinue("Нужен He транспозер."); return end; used[he.address]=true
     end
 
-    clear(); header("ГОТОВО", 8)
+    local components={eoh=controller.address,eohController=controller.address,transposerH2=h2 and h2.address or nil,transposerHydrogen=h2 and h2.address or nil,transposerHe=he and he.address or nil,transposerHelium=he and he.address or nil,transposerPlasma=plasma and plasma.address or nil,transposerPlasmaList=plasma and {plasma.address} or {},transposers={}}
+    for _,item in ipairs(transposers) do if used[item.address] then components.transposers[#components.transposers+1]={address=item.address,role=item.address==(h2 and h2.address) and "hydrogen" or item.address==(he and he.address) and "helium" or item.address==(plasma and plasma.address) and "plasma" or nil,sourceSide=item.sourceSide,sourceSideName=item.sourceSideName,targetSide=item.targetSide,targetSideName=item.targetSideName} end end
+
+    if not summary(settings,controller,h2,he,plasma) then return end
+    local id,saved
+    if existing then saved=registry.updateComponents(targetIndex,components); if saved then saved=registry.updateEOH(targetIndex,settings) end; id=targetIndex
+    else id,saved=registry.addEOH("EOH "..tostring(controller.name or "Controller"),components,settings) end
+
+    clear(); header("ГОТОВО",8)
     if saved then
-        text(4, 8, "✓ EOH успешно сохранён.", C.ok)
-        text(4, 10, "Контроллер: " .. tostring(controller.address), C.text)
-        text(4, 11, "Tier T" .. tostring(settings.tier) .. " | " .. tostring(settings.planet)
-            .. " | AA " .. (settings.mode == "aa" and "ON" or "OFF")
-            .. " | OC " .. tostring(settings.overclocks), C.text)
-        text(4, 13, "Оборудование привязано к этому EOH.", C.ok)
-    else
-        text(4, 8, "✗ Не удалось сохранить конфигурацию.", C.ring_down)
-        text(4, 10, "Проверьте /home/eoh/logs и базу данных.", C.warn)
-    end
+        text(4,8,"✓ EOH успешно сохранён.",C.ok); text(4,10,"Tier T"..tostring(settings.tier).." | "..tostring(settings.planet),C.text)
+        text(4,11,"AA "..(settings.useAA and "ON" or "OFF").." | OC "..tostring(settings.overclocks),C.text); text(4,13,"Оборудование привязано к этому EOH.",C.ok)
+    else text(4,8,"✗ Не удалось сохранить конфигурацию.",C.ring_down) end
     waitContinue("ENTER = вернуться в Main")
 end
 
-return { runSetup = runSetup }
+return {runSetup=runSetup}
