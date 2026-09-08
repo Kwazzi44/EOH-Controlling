@@ -7,30 +7,60 @@ local C = theme.C
 local coreBuild = "unknown"
 
 local stageLabel = {
-    OFF = "[ OFF ]", READY = "[READY]", LOADING = "[LOAD ]",
-    STARTING = "[WAIT ]", WORK = "[WORK ]", NO_EU = "[NO EU]",
-    ERROR = "[ ERR ]",
+    OFF = "[OFF ]", READY = "[STBY]", LOADING = "[LOAD]",
+    STARTING = "[WAIT]", WORK = "[WORK]", NO_EU = "[NO EU]",
+    ERROR = "[ERR ]",
 }
+
 local stageColor = {
     OFF = C.dim, READY = C.partial, LOADING = C.key,
     STARTING = C.warn, WORK = C.ok, NO_EU = C.ring_down,
     ERROR = C.ring_down,
 }
 
-local function progressText(runtime)
+local function progressPercent(runtime)
     local progress = tonumber(runtime and runtime.progress) or 0
     local maximum = tonumber(runtime and runtime.maximum) or 0
     if maximum > 0 then
-        return string.format("%3d%%", math.max(0, math.min(100,
-            math.floor(progress / maximum * 100))))
+        return math.max(0, math.min(100, math.floor(progress / maximum * 100)))
     end
-    return "--"
+    return nil
+end
+
+local function progressText(runtime)
+    local percent = progressPercent(runtime)
+    return percent and string.format("%3d%%", percent) or "--"
 end
 
 local function modeName(settings)
     if settings.mode == "power" then return "ENERGY" end
     if settings.mode == "aa" then return "AA" end
     return "NO AA"
+end
+
+local function componentShort(value)
+    if type(value) == "table" then value = value.address end
+    if not value then return "-" end
+    value = tostring(value)
+    if #value > 18 then return value:sub(1, 18) end
+    return value
+end
+
+local function drawLine(x, y, width)
+    theme.gset(x, y, string.rep("-", math.max(1, width)), C.border, C.bg)
+end
+
+local function drawProgressBar(x, y, width, runtime)
+    local percent = progressPercent(runtime)
+    if not percent then
+        theme.gset(x, y, "[--------------------] --", C.dim, C.bg)
+        return
+    end
+    local inner = math.max(1, width - 2)
+    local filled = math.floor(inner * percent / 100)
+    local bar = "[" .. string.rep("#", filled) .. string.rep("-", inner - filled) .. "]"
+    theme.gset(x, y, bar, C.ok, C.bg)
+    theme.gset(x + #bar + 1, y, string.format("%3d%%", percent), C.text, C.bg)
 end
 
 function gui.setBuild(build)
@@ -48,49 +78,88 @@ function gui.drawDetail(eoh, notice, runtime)
     if not gpu then
         term.clear()
         print("EOH: " .. tostring(eoh.name))
-        print("Controller: " .. tostring((eoh.components or {}).eoh or "missing"))
+        print("Status: " .. tostring(runtime and runtime.stage or "OFF"))
+        print("Progress: " .. progressText(runtime))
+        print("B = Back, R = Run")
         return
     end
+
     local width, height = theme.getRes()
     local components = eoh.components or {}
     local settings = eoh.settings or {}
     local controller = components.eoh or components.eohController
     runtime = runtime or {stage = controller and "READY" or "OFF"}
     local stage = runtime.stage or "OFF"
+    local stageText = stageLabel[stage] or "[????]"
+
     theme.gfill(1, 1, width, height, " ", C.text, C.bg)
-    theme.drawHeader(tostring(eoh.name) .. " STATUS", stageLabel[stage] or "[????]")
-    theme.gset(1, 4, "| #  COMPONENT                    ROLE          STATE", C.dim, C.bg)
-    theme.gset(1, 5, "+" .. string.rep("=", width - 2) .. "+", C.border, C.bg)
-    local useAA = settings.mode == "aa"
+    theme.drawHeader(tostring(eoh.name) .. " STATUS", stageText)
+
+    -- Left: machine/component list. Right: telemetry/configuration.
+    local split = math.floor(width * 0.54)
+    if split < 38 then split = 38 end
+    if split > width - 25 then split = width - 25 end
+    theme.gset(split, 5, "|", C.border, C.bg)
+    for y = 5, height - 2 do theme.gset(split, y, "|", C.border, C.bg) end
+
+    theme.gset(2, 5, "#  COMPONENT", C.dim, C.bg)
+    theme.gset(split + 2, 5, "TELEMETRY", C.dim, C.bg)
+    drawLine(2, 6, split - 3)
+    drawLine(split + 2, 6, width - split - 3)
+
     local rows = {
-        {"EOH", controller, "CONTROLLER"},
-        {"H2", components.transposerH2, "HYDROGEN"},
-        {"He", components.transposerHe, "HELIUM"},
+        {"01", "EOH Controller", controller, "CONTROLLER"},
+        {"02", "H2 Transposer", components.transposerH2, "HYDROGEN"},
+        {"03", "He Transposer", components.transposerHe, "HELIUM"},
     }
-    if useAA then
-        table.insert(rows, {"AA", components.transposerPlasma, "PLASMA"})
+    if settings.mode == "aa" then
+        rows[#rows + 1] = {"04", "Plasma Transposer", components.transposerPlasma, "PLASMA"}
     end
+
     for i, row in ipairs(rows) do
-        local y = 5 + i
-        local active = row[2] and "BOUND" or "MISSING"
-        theme.gset(1, y, "|", C.border, C.bg)
-        theme.gset(width, y, "|", C.border, C.bg)
-        theme.gset(3, y, string.format("%-3s %-28s %-13s %s", row[1],
-            tostring(row[2] or "-"):sub(1, 28), row[3], active),
-            row[2] and C.ok or C.ring_down, C.bg)
+        local y = 6 + i
+        local exists = row[3] ~= nil
+        theme.gset(2, y, row[1], C.dim, C.bg)
+        theme.gset(6, y, row[2], exists and C.text or C.ring_down, C.bg)
+        theme.gset(math.max(24, split - 13), y, exists and "[BOUND]" or "[MISSING]",
+            exists and C.ok or C.ring_down, C.bg)
+        if exists and y + 1 < height - 2 then
+            theme.gset(6, y + 1, componentShort(row[3]), C.dim, C.bg)
+        end
     end
-    theme.gset(3, 12, "MODE: " .. modeName(settings), C.title, C.bg)
-    theme.gset(3, 13, "TIER: T" .. tostring(settings.tier or 3)
-        .. "   OC: " .. tostring(settings.overclocks or 0)
-        .. "   AUTO: " .. (settings.autoRestart ~= false and "ON" or "OFF"), C.text, C.bg)
-    theme.gset(3, 14, "STAGE: " .. stage .. "   PROGRESS: "
-        .. progressText(runtime), stageColor[stage] or C.unknown, C.bg)
-    theme.gset(3, 15, runtime.message or "", C.dim, C.bg)
-    theme.gset(3, 16, "CORE BUILD: " .. coreBuild, C.dim, C.bg)
+
+    local tx = split + 2
+    local ty = 7
+    theme.gset(tx, ty, "STATE: ", C.dim, C.bg)
+    theme.gset(tx + 7, ty, stageText, stageColor[stage] or C.unknown, C.bg)
+    ty = ty + 2
+    theme.gset(tx, ty, "Progress:  " .. progressText(runtime), C.text, C.bg)
+    ty = ty + 1
+    drawProgressBar(tx, ty, math.min(30, width - tx - 4), runtime)
+    ty = ty + 2
+
+    if runtime.message then
+        theme.gset(tx, ty, tostring(runtime.message):sub(1, width - tx - 1), C.dim, C.bg)
+        ty = ty + 2
+    end
+
+    theme.gset(tx, ty, "Configuration", C.title, C.bg)
+    ty = ty + 1
+    theme.gset(tx, ty, "Tier:       T" .. tostring(settings.tier or 3), C.text, C.bg); ty = ty + 1
+    theme.gset(tx, ty, "Planet:     " .. tostring(settings.planet or "-"), C.text, C.bg); ty = ty + 1
+    theme.gset(tx, ty, "AA:         " .. (settings.mode == "aa" and "ON" or "OFF"), C.text, C.bg); ty = ty + 1
+    theme.gset(tx, ty, "Overclock:  " .. tostring(settings.overclocks or 0), C.text, C.bg); ty = ty + 1
+    theme.gset(tx, ty, "Auto:       " .. (settings.autoRestart ~= false and "ON" or "OFF"), C.text, C.bg); ty = ty + 2
+
     if notice then
-        theme.gset(3, 18, tostring(notice):sub(1, width - 5), C.warn, C.bg)
+        theme.gset(tx, math.min(ty, height - 4), tostring(notice):sub(1, width - tx - 1), C.warn, C.bg)
     end
-    theme.drawFooter({{"B", "Back"}, {"Enter", "Settings"}, {"R", "Run"}, {"F1", "Setup"}})
+
+    theme.gset(2, height - 3, "CORE BUILD: " .. coreBuild, C.dim, C.bg)
+    theme.drawFooter({
+        {"B", "Back"}, {"Enter", "Settings"}, {"R", "Run"},
+        {"F1", "Setup"}, {"F3", "Refresh"},
+    })
 end
 
 function gui.draw(eohs, selected, title, runtimes)
@@ -100,47 +169,52 @@ function gui.draw(eohs, selected, title, runtimes)
         for i, eoh in ipairs(eohs or {}) do
             print((i == selected and "> " or "  ") .. i .. ". " .. tostring(eoh.name))
         end
-
         return
     end
 
     local width, height = theme.getRes()
     local total = #(eohs or {})
-    theme.gfill(1, 1, width, height, " ", C.text, C.bg)
-    theme.drawHeader("GTNH EOH MONITOR", string.format("LIVE - %d CONTROLLERS | B%s", total, coreBuild))
-    theme.gset(1, 4, "|" .. theme.pad("#", 4) .. theme.pad("EOH NAME", 16)
-        .. theme.pad("STAGE", 11) .. theme.pad("PROGRESS", 10)
-        .. theme.pad("MODE", 11) .. theme.pad("TIER", 5)
-        .. theme.pad("OC", 5) .. "AUTO", C.dim, C.bg)
-    theme.gset(1, 5, "+" .. string.rep("=", width - 2) .. "+", C.border, C.bg)
+    selected = selected or 1
 
-    local listHeight = height - 11
+    theme.gfill(1, 1, width, height, " ", C.text, C.bg)
+    theme.drawHeader("GTNH EOH MONITOR", string.format("ONLINE - %d EOH", total))
+
+    theme.gset(2, 5, "#  EOH NAME", C.dim, C.bg)
+    theme.gset(30, 5, "STATUS", C.dim, C.bg)
+    theme.gset(43, 5, "ACTIVITY", C.dim, C.bg)
+    theme.gset(62, 5, "TIER", C.dim, C.bg)
+    theme.gset(69, 5, "OC", C.dim, C.bg)
+    theme.gset(74, 5, "AA", C.dim, C.bg)
+    drawLine(2, 6, width - 3)
+
+    local listHeight = math.max(1, height - 10)
     for row = 0, listHeight - 1 do
         local index = row + 1
-        local y = 6 + row
-        theme.gset(1, y, "|", C.border, C.bg)
-        theme.gset(width, y, "|", C.border, C.bg)
+        local y = 7 + row
         if index <= total then
             local eoh = eohs[index]
-            local selectedRow = index == (selected or 1)
-            local bg = selectedRow and C.sel_bg or C.bg
             local runtime = (runtimes or {})[index] or {stage = "OFF"}
             local stage = runtime.stage or "OFF"
-            theme.gfill(2, y, width - 2, 1, " ", C.text, bg)
+            local selectedRow = index == selected
+            local bg = selectedRow and C.sel_bg or C.bg
+            theme.gfill(2, y, width - 3, 1, " ", C.text, bg)
             theme.gset(3, y, string.format("%02d", index), C.dim, bg)
-            theme.gset(6, y, theme.pad(eoh.name or "Unnamed", 16),
+            theme.gset(7, y, tostring(eoh.name or "Unnamed"):sub(1, 20),
                 selectedRow and C.sel_fg or C.text, bg)
-            theme.gset(22, y, theme.pad(stageLabel[stage] or "[????]", 11),
-                stageColor[stage] or C.unknown, bg)
-            theme.gset(33, y, theme.pad(progressText(runtime), 10), C.text, bg)
-            theme.gset(43, y, theme.pad(modeName(eoh.settings or {}), 11), C.text, bg)
-            theme.gset(54, y, theme.pad("T" .. tostring((eoh.settings or {}).tier or 3), 5), C.text, bg)
-            theme.gset(59, y, theme.pad(tostring((eoh.settings or {}).overclocks or 0), 5), C.text, bg)
-            theme.gset(64, y, ((eoh.settings or {}).autoRestart ~= false and "ON" or "OFF"),
-                (eoh.settings or {}).autoRestart ~= false and C.ok or C.dim, bg)
+            theme.gset(30, y, stageLabel[stage] or "[????]", stageColor[stage] or C.unknown, bg)
+            local activity = progressText(runtime)
+            if stage == "WORK" then activity = "working " .. activity
+            elseif stage == "READY" then activity = "idle"
+            elseif stage == "OFF" then activity = "offline"
+            else activity = string.lower(stage) end
+            theme.gset(43, y, activity:sub(1, 17), C.text, bg)
+            theme.gset(62, y, "T" .. tostring((eoh.settings or {}).tier or 3), C.text, bg)
+            theme.gset(69, y, tostring((eoh.settings or {}).overclocks or 0), C.text, bg)
+            theme.gset(74, y, (eoh.settings or {}).mode == "aa" and "ON" or "OFF", C.text, bg)
         end
     end
 
+    theme.gset(2, height - 3, string.format("EOH: %d   CORE: %s", total, coreBuild), C.dim, C.bg)
     theme.drawFooter({
         {"Enter", "Details"}, {"F1", "Setup"}, {"Del", "Delete"},
         {"F3", "Refresh"}, {"Q", "Quit"},
