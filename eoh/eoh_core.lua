@@ -1,5 +1,4 @@
 -- EOH CORE FACADE
--- Public API used by HUB and legacy /home/eoh/main.lua.
 package.path = "/home/?.lua;/home/eoh/?.lua;/home/hub/?.lua;/home/lib/?.lua;" .. package.path
 
 local context = require("context")
@@ -10,7 +9,7 @@ local thread = require("thread")
 local computer = require("computer")
 local component = require("component")
 
-local M = {build = "20260908-1800"}
+local M = {build = "20260908-1815"}
 local defaultContext = nil
 local contexts = {}
 local runners = {}
@@ -31,11 +30,8 @@ local function ctxFor(components, settings)
         end
         return ctx
     end
-    if not defaultContext then
-        defaultContext = context.new({}, settings or {})
-    elseif settings then
-        context.apply(defaultContext, nil, settings)
-    end
+    if not defaultContext then defaultContext = context.new({}, settings or {})
+    elseif settings then context.apply(defaultContext, nil, settings) end
     return defaultContext
 end
 
@@ -58,33 +54,13 @@ function M.scanComponents(excluded)
     return found
 end
 
-function M.getStatus(components, settings)
-    return runtime.getStatus(ctxFor(components, settings))
-end
-
-function M.getRuntimeState(components, settings)
-    return runtime.getRuntimeState(ctxFor(components, settings))
-end
-
-function M.refreshRuntime(components, settings, force)
-    return runtime.refresh(ctxFor(components, settings), force == true)
-end
-
-function M.startRecipe(tier, useAA, overclocks, components, settings)
-    return engine.startRecipe(ctxFor(components, settings), tier, useAA, overclocks)
-end
-
-function M.runProductionMode(tier, useAA, overclocks, autoRestart, components, settings)
-    return engine.runProduction(ctxFor(components, settings), tier, useAA, overclocks, autoRestart)
-end
-
-function M.runPowerMode(autoRestart, components, settings)
-    return engine.runPower(ctxFor(components, settings), autoRestart)
-end
-
-function M.waitForCompletion(components, timeout)
-    return engine.waitForCompletion(ctxFor(components), timeout)
-end
+function M.getStatus(components, settings) return runtime.getStatus(ctxFor(components, settings)) end
+function M.getRuntimeState(components, settings) return runtime.getRuntimeState(ctxFor(components, settings)) end
+function M.refreshRuntime(components, settings, force) return runtime.refresh(ctxFor(components, settings), force == true) end
+function M.startRecipe(tier, useAA, overclocks, components, settings) return engine.startRecipe(ctxFor(components, settings), tier, useAA, overclocks) end
+function M.runProductionMode(tier, useAA, overclocks, autoRestart, components, settings) return engine.runProduction(ctxFor(components, settings), tier, useAA, overclocks, autoRestart) end
+function M.runPowerMode(autoRestart, components, settings) return engine.runPower(ctxFor(components, settings), autoRestart) end
+function M.waitForCompletion(components, timeout) return engine.waitForCompletion(ctxFor(components), timeout) end
 
 function M.formatNumber(num)
     num = tonumber(num) or 0
@@ -109,13 +85,7 @@ function M.startConfiguredCycle(components, settings)
     runners[address] = nil
 
     local ctx = ctxFor(components, settings)
-    local runner = {
-        ctx = ctx,
-        running = true,
-        thread = nil,
-        startedAt = computer.uptime(),
-        error = nil,
-    }
+    local runner = {ctx=ctx, running=true, thread=nil, startedAt=computer.uptime(), error=nil}
 
     local function worker()
         local ok, result, message = xpcall(function()
@@ -125,7 +95,7 @@ function M.startConfiguredCycle(components, settings)
             return engine.runProduction(
                 ctx,
                 ctx.settings.tier or 3,
-                ctx.settings.mode == "aa",
+                ctx.settings.useAA == true,
                 ctx.settings.overclocks or 0,
                 ctx.settings.autoRestart ~= false
             )
@@ -158,9 +128,7 @@ function M.startConfiguredCycle(components, settings)
         pcall(component.invoke, address, "setWorkAllowed", false)
         runtime.set(ctx, "OFF", "Cycle stopped")
     end
-    runner.status = function()
-        return runner.running and "running" or "stopped"
-    end
+    runner.status = function() return runner.running and "running" or "stopped" end
 
     runners[address] = runner
     pcall(handle.detach, handle)
@@ -173,9 +141,7 @@ function M.tick()
     end
 end
 
-function M.tickConfiguredCycles()
-    return M.tick()
-end
+function M.tickConfiguredCycles() return M.tick() end
 
 function M.stopCycle(components)
     local address, runner = runnerFor(components)
@@ -200,8 +166,6 @@ function M.dropContext(components)
     if address then contexts[address] = nil end
 end
 
-function M.getContext(components)
-    return ctxFor(components, nil)
-end
+function M.getContext(components) return ctxFor(components, nil) end
 
 return M
