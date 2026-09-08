@@ -1,187 +1,182 @@
 -- ============================================
 -- EOH CONTROLLER INSTALLER / UPDATER
 -- ============================================
--- Low-disk-space installer for OpenComputers.
+-- Bootstrap installer. The installer itself is not overwritten by updates.
 -- User data is protected in /home/eoh_data/.
 
-local filesystem = require("filesystem")
-local internet = require("internet")
-local os = require("os")
-local computer = require("computer")
-local serialization = require("serialization")
-local term = require("term")
+local filesystem=require("filesystem")
+local internet=require("internet")
+local os=require("os")
+local computer=require("computer")
+local serialization=require("serialization")
+local term=require("term")
 
-local REPO = "https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling/main"
-local VERSION = "20260908-1701"
-local PROTECTED = "/home/eoh_data"
-
-local FILES = {
-  "/eoh/eoh_core.lua", "/eoh/context.lua", "/eoh/scanner.lua",
-  "/eoh/runtime.lua", "/eoh/transposers.lua", "/eoh/engine.lua",
-  "/eoh/diagnose.lua", "/eoh/main.lua", "/eoh/recipes.lua",
-  "/hub/main.lua", "/hub/gui.lua", "/hub/theme.lua", "/hub/database.lua",
-  "/hub/registry.lua", "/hub/setup.lua", "/lib/config.lua",
-  "/lib/settings.lua", "/lib/logger.lua", "/autorun.lua", "/U.lua",
-  "/update_manifest.lua", "/install_eoh.lua"
-}
+local REPO="https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling"
+local SOURCE_REF="494671c61ae728182ebd2a5514d9824e2447f8bb"
+local VERSION="20260908-1815"
+local PROTECTED="/home/eoh_data"
+local MANIFEST_PATH="/home/update_manifest.lua"
+local ALLOWED_ROOTS={"/home/eoh/","/home/hub/","/home/lib/"}
+local ALLOWED_FILES={"/home/autorun.lua", "/home/U.lua", "/home/update_manifest.lua"}
 
 local function ensureDir(path)
-  if filesystem.exists(path) then return true end
-  local ok, err = filesystem.makeDirectory(path)
-  if not ok and not filesystem.exists(path) then return false, err end
-  return true
+    if filesystem.exists(path) then return true end
+    local ok,err=filesystem.makeDirectory(path)
+    if not ok and not filesystem.exists(path) then return false,err end
+    return true
 end
 
 local function readResponse(request)
-  local chunks = {}
-  while true do
-    local ok, chunk = pcall(request.read)
-    if not ok then return nil, "Ошибка чтения HTTP: " .. tostring(chunk) end
-    if not chunk then break end
-    chunks[#chunks + 1] = chunk
-  end
-  return table.concat(chunks)
+    local chunks={}
+    while true do
+        local ok,chunk=pcall(request.read)
+        if not ok then return nil,"Ошибка чтения HTTP: "..tostring(chunk) end
+        if not chunk then break end
+        chunks[#chunks+1]=chunk
+    end
+    return table.concat(chunks)
 end
 
-local function fetch(url)
-  local ok, request = pcall(internet.request, url)
-  if not ok or not request then return nil, "Не удалось создать HTTP запрос" end
-  local data, err = readResponse(request)
-  if not data then return nil, err end
-  if data == "" then return nil, "Получен пустой ответ" end
-  return data
+local function fetch(path)
+    local url=REPO.."/"..SOURCE_REF..path
+    local ok,request=pcall(internet.request,url)
+    if not ok or not request then return nil,"Не удалось создать HTTP запрос: "..tostring(url) end
+    return readResponse(request)
 end
 
-local function checkLua(data, name)
-  local loader, err
-  if loadstring then loader, err = loadstring(data, name)
-  else loader, err = load(data, name) end
-  if not loader then return false, err end
-  return true
+local function checkLua(data,name)
+    local loader,err
+    if loadstring then loader,err=loadstring(data,name) else loader,err=load(data,name) end
+    if not loader then return false,err end
+    return true
 end
 
-local function writeFile(path, data)
-  local dir = filesystem.path(path)
-  if dir then
-    local ok, err = ensureDir(dir)
-    if not ok then return false, "Не удалось создать " .. dir .. ": " .. tostring(err) end
-  end
-  local file, err = io.open(path, "w")
-  if not file then return false, tostring(err) end
-  local okWrite, writeErr = pcall(file.write, file, data)
-  file:close()
-  if not okWrite then return false, tostring(writeErr) end
-  return true
+local function writeFile(path,data)
+    local dir=filesystem.path(path)
+    if dir then local ok,err=ensureDir(dir); if not ok then return false,"Не удалось создать "..dir..": "..tostring(err) end end
+    local file,err=io.open(path,"w")
+    if not file then return false,tostring(err) end
+    local okWrite,writeErr=pcall(file.write,file,data); file:close()
+    if not okWrite then return false,tostring(writeErr) end
+    return true
 end
 
 local function readFile(path)
-  local file, err = io.open(path, "r")
-  if not file then return nil, err end
-  local data = file:read("*all")
-  file:close()
-  return data
+    local file,err=io.open(path,"r"); if not file then return nil,err end
+    local data=file:read("*all"); file:close(); return data
+end
+
+local function loadManifest(data,name)
+    local loader,err
+    if loadstring then loader,err=loadstring(data,name) else loader,err=load(data,name) end
+    if not loader then return nil,err end
+    local ok,result=pcall(loader)
+    if not ok or type(result)~="table" then return nil,ok and "Manifest did not return a table" or result end
+    if type(result.files)~="table" or #result.files==0 then return nil,"Manifest has no managed files" end
+    return result
+end
+
+local function isSafeManagedPath(path)
+    if path==PROTECTED or path:sub(1,#PROTECTED+1)==PROTECTED.."/" then return false end
+    for _,root in ipairs(ALLOWED_ROOTS) do if path:sub(1,#root)==root then return true end end
+    for _,file in ipairs(ALLOWED_FILES) do if path==file then return true end end
+    return false
+end
+
+local function pathSet(files)
+    local set={}
+    for _,path in ipairs(files or {}) do if type(path)=="string" then set[path]=true end end
+    return set
 end
 
 local function migrateLegacyData()
-  local target = PROTECTED .. "/database.dat"
-  local oldRegistry = "/home/hub/registry.dat"
-  local oldSettings = "/home/eoh/settings.dat"
-  if filesystem.exists(target) then return true end
-  if not filesystem.exists(oldRegistry) and not filesystem.exists(oldSettings) then return true end
+    local target=PROTECTED.."/database.dat"
+    local oldRegistry="/home/hub/registry.dat"
+    local oldSettings="/home/eoh/settings.dat"
+    if filesystem.exists(target) then return true end
+    if not filesystem.exists(oldRegistry) and not filesystem.exists(oldSettings) then return true end
 
-  local data = {schema=1, globalSettings={}, eohs={}}
-  if filesystem.exists(oldRegistry) then
-    local content, err = readFile(oldRegistry)
-    if not content then return false, tostring(err) end
-    local saved, reason = serialization.unserialize(content)
-    if type(saved) ~= "table" then return false, "Старый registry.dat повреждён: " .. tostring(reason) end
-    if saved.eohs then
-      data.eohs = saved.eohs
-      data.globalSettings = saved.globalSettings or {}
-    else
-      data.eohs = saved
+    local data={schema=1,globalSettings={},eohs={}}
+    if filesystem.exists(oldRegistry) then
+        local content,err=readFile(oldRegistry); if not content then return false,tostring(err) end
+        local saved,reason=serialization.unserialize(content)
+        if type(saved)~="table" then return false,"Старый registry.dat повреждён: "..tostring(reason) end
+        if saved.eohs then data.eohs=saved.eohs; data.globalSettings=saved.globalSettings or {} else data.eohs=saved end
     end
-  end
-  if filesystem.exists(oldSettings) then
-    local content = readFile(oldSettings)
-    if content then
-      local saved = serialization.unserialize(content)
-      if type(saved) == "table" then
-        for k, v in pairs(saved) do data.globalSettings[k] = v end
-      end
+    if filesystem.exists(oldSettings) then
+        local content=readFile(oldSettings)
+        if content then local saved=serialization.unserialize(content); if type(saved)=="table" then for k,v in pairs(saved) do data.globalSettings[k]=v end end end
     end
-  end
-  local serialized = serialization.serialize(data)
-  if not serialized then return false, "Не удалось сериализовать database.dat" end
-  local ok, err = writeFile(target, serialized)
-  if not ok then return false, err end
-  return true
+    local serialized=serialization.serialize(data); if not serialized then return false,"Не удалось сериализовать database.dat" end
+    return writeFile(target,serialized)
 end
 
 local function install()
-  term.clear()
-  print("============================================================")
-  print("          EOH CONTROLLER INSTALLER " .. VERSION)
-  print("============================================================")
-  print("")
-  print("Protected data: " .. PROTECTED .. "/")
-  print("Пользовательская база не удаляется и не обновляется.")
+    term.clear()
+    print("============================================================")
+    print("          EOH CONTROLLER INSTALLER "..VERSION)
+    print("============================================================")
+    print("Release: "..SOURCE_REF)
+    print("Protected data: "..PROTECTED.."/")
+    print("")
 
-  print("")
-  print("[1/3] Проверка GitHub...")
-  local probe, probeErr = fetch(REPO .. "/README.md?v=" .. VERSION)
-  if not probe then error("Нет подключения к GitHub: " .. tostring(probeErr)) end
-  print("  OK")
+    print("[1/4] Проверка защищённой базы...")
+    local ok,err=ensureDir(PROTECTED); if not ok then error("Не удалось создать "..PROTECTED..": "..tostring(err)) end
+    local migrated,migrationErr=migrateLegacyData(); if not migrated then error("Миграция: "..tostring(migrationErr)) end
+    print("  OK")
 
-  print("")
-  print("[2/3] Защита пользовательских данных...")
-  local ok, err = ensureDir(PROTECTED)
-  if not ok then error("Не удалось создать " .. PROTECTED .. ": " .. tostring(err)) end
-  local migrated, migrationErr = migrateLegacyData()
-  if not migrated then error("Миграция: " .. tostring(migrationErr)) end
-  print("  OK")
+    print("[2/4] Загрузка release manifest...")
+    local manifestData,manifestErr=fetch("/update_manifest.lua")
+    if not manifestData then error("Не удалось загрузить manifest: "..tostring(manifestErr)) end
+    local manifest,parseErr=loadManifest(manifestData,"update_manifest.lua")
+    if not manifest then error("Manifest повреждён: "..tostring(parseErr)) end
+    if tostring(manifest.version)~=VERSION then error("Версия manifest "..tostring(manifest.version).." не совпадает с installer "..VERSION) end
+    local newFiles=pathSet(manifest.files)
+    print("  OK ("..tostring(#manifest.files).." managed files)")
 
-  print("")
-  print("[3/3] Скачивание и установка файлов...")
-  print("  Cache-busting включён: загружается именно версия " .. VERSION .. ".")
-
-  for i, src in ipairs(FILES) do
-    local dst = "/home" .. src
-    io.write(string.format("  [%02d/%02d] %s ... ", i, #FILES, src))
-    local data, downloadErr = fetch(REPO .. src .. "?v=" .. VERSION)
-    if not data then print("FAIL"); error(src .. ": " .. tostring(downloadErr)) end
-
-    if src:sub(-4) == ".lua" then
-      local valid, syntaxErr = checkLua(data, src)
-      if not valid then print("FAIL"); error("Синтаксическая ошибка в " .. src .. ": " .. tostring(syntaxErr)) end
+    print("[3/4] Проверка и установка release файлов...")
+    for i,path in ipairs(manifest.files) do
+        if type(path)~="string" or not isSafeManagedPath(path) then error("Недопустимый managed path: "..tostring(path)) end
+        local relative=path:sub(6)
+        io.write(string.format("  [%02d/%02d] %s ... ",i,#manifest.files,path))
+        local data,downloadErr=fetch("/"..relative)
+        if not data then print("FAIL"); error(path..": "..tostring(downloadErr)) end
+        if path:sub(-4)==".lua" then
+            local valid,syntaxErr=checkLua(data,path)
+            if not valid then print("FAIL"); error("Синтаксическая ошибка в "..path..": "..tostring(syntaxErr)) end
+        end
+        local wrote,writeErr=writeFile(path,data)
+        if not wrote then print("FAIL"); error(path..": "..tostring(writeErr)) end
+        print("OK")
     end
 
-    local wrote, writeErr = writeFile(dst, data)
-    if not wrote then print("FAIL"); error(dst .. ": " .. tostring(writeErr)) end
-    print("OK")
-  end
+    print("[4/4] Удаление устаревших managed файлов...")
+    local oldManifestData=readFile(MANIFEST_PATH)
+    local oldManifest=oldManifestData and loadManifest(oldManifestData,"old_update_manifest.lua") or nil
+    local removed=0
+    if oldManifest and type(oldManifest.files)=="table" then
+        for _,oldPath in ipairs(oldManifest.files) do
+            if type(oldPath)=="string" and not newFiles[oldPath] and isSafeManagedPath(oldPath) and filesystem.exists(oldPath) then
+                if filesystem.remove(oldPath) then removed=removed+1 end
+            end
+        end
+    end
+    print("  Removed stale managed files: "..tostring(removed))
 
-  print("")
-  print("============================================================")
-  print("EOH Controller " .. VERSION .. " установлен.")
-  print("Protected data сохранена: " .. PROTECTED .. "/database.dat")
-  print("============================================================")
-  print("Перезагрузка через 5 секунд...")
-  os.sleep(5)
-  computer.shutdown(true)
+    print("")
+    print("============================================================")
+    print("EOH Controller "..VERSION.." установлен.")
+    print("Protected data сохранена: "..PROTECTED.."/database.dat")
+    print("Installer остаётся bootstrap-файлом и не перезаписывается.")
+    print("============================================================")
+    print("Перезагрузка через 5 секунд...")
+    os.sleep(5)
+    computer.shutdown(true)
 end
 
-local ok, err = xpcall(install, debug.traceback)
+local ok,err=xpcall(install,debug.traceback)
 if not ok then
-  print("")
-  print("============================================================")
-  print("              ОШИБКА УСТАНОВКИ")
-  print("============================================================")
-  print(tostring(err))
-  print("")
-  print("Protected data: " .. PROTECTED .. "/")
-  print("Пользовательская база не удаляется установщиком.")
-  print("")
-  print("Нажмите любую клавишу для выхода...")
-  pcall(function() io.read() end)
+    print(""); print("============================================================"); print("              ОШИБКА УСТАНОВКИ"); print("============================================================")
+    print(tostring(err)); print(""); print("Protected data: "..PROTECTED.."/"); print("Пользовательская база не удаляется установщиком."); print(""); print("Нажмите любую клавишу для выхода...")
+    pcall(function() io.read() end)
 end
