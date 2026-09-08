@@ -4,7 +4,7 @@
 -- Bootstrap installer. The installer itself is not overwritten by updates.
 -- User data is protected in /home/eoh_data/.
 local filesystem=require("filesystem"); local internet=require("internet"); local os=require("os"); local computer=require("computer"); local serialization=require("serialization"); local term=require("term")
-local REPO="https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling"; local SOURCE_REF="235314b71a49819141c2391d8d1d5a741e2481bb"; local VERSION="20260908-1820"; local PROTECTED="/home/eoh_data"; local MANIFEST_PATH="/home/update_manifest.lua"
+local REPO="https://raw.githubusercontent.com/Kwazzi44/EOH-Controlling"; local SOURCE_REF="186dca5a492f92c5007a1d692d26027eaf12eb02"; local VERSION="20260908-1820"; local PROTECTED="/home/eoh_data"; local MANIFEST_PATH="/home/update_manifest.lua"
 local ALLOWED_ROOTS={"/home/eoh/","/home/hub/","/home/lib/"}; local ALLOWED_FILES={"/home/autorun.lua","/home/U.lua","/home/update_manifest.lua"}
 local function ensureDir(path) if filesystem.exists(path) then return true end local ok,err=filesystem.makeDirectory(path); if not ok and not filesystem.exists(path) then return false,err end return true end
 local function readResponse(request) local chunks={}; while true do local ok,chunk=pcall(request.read); if not ok then return nil,"Ошибка чтения HTTP: "..tostring(chunk) end; if not chunk then break end; chunks[#chunks+1]=chunk end; return table.concat(chunks) end
