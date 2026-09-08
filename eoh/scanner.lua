@@ -22,8 +22,8 @@ local function sensorMarksController(proxy)
     for _, line in ipairs(info) do
         local text = clean(line)
         if text:find("progress:",1,true) or text:find("problems",1,true) or text:find("efficiency:",1,true)
-            or text:find("прогресс:",1,true) or text:find("проблемы",1,true) or text:find("эффективность",1,true)
-            or text:find("multimachine",1,true) and text:find("harmony",1,true)
+            or text:find("прогресс:",1,true) or text:find("проблемы",1,true) or text:find("эффективность:",1,true)
+            or (text:find("multimachine",1,true) and text:find("harmony",1,true))
             or text:find("внутреннее хранилище",1,true)
             or text:find("астральных массивов",1,true) then
             return true
@@ -31,8 +31,17 @@ local function sensorMarksController(proxy)
     end
     return false
 end
-local function machineName(proxy, fallback)
-    -- GTNH exposes the actual machine id through getName(); some variants may also expose getMachineName().
+local function machineName(address, proxy, fallback)
+    -- In GTNH/OC getName() may be exposed reliably through component.invoke,
+    -- while the proxy method can be unavailable depending on the adapter.
+    if address and hasMethod(address, "getName") then
+        local ok, value = pcall(component.invoke, address, "getName")
+        if ok and type(value) == "string" and value ~= "" then return value end
+    end
+    if address and hasMethod(address, "getMachineName") then
+        local ok, value = pcall(component.invoke, address, "getMachineName")
+        if ok and type(value) == "string" and value ~= "" then return value end
+    end
     if proxy and type(proxy.getMachineName) == "function" then
         local ok, value = pcall(proxy.getMachineName)
         if ok and type(value) == "string" and value ~= "" then return value end
@@ -45,7 +54,6 @@ local function machineName(proxy, fallback)
 end
 local function controllerEvidence(address, proxy, name)
     local lowerName, reasons, score = clean(name), {}, 0
-    -- GTNH names like: multimachine:eye_of_harmony
     local strong = lowerName:find("eye_of_harmony",1,true)
         or lowerName:find("eye of harmony",1,true)
         or lowerName:find("eyeofharmony",1,true)
@@ -63,8 +71,6 @@ local function controllerEvidence(address, proxy, name)
         and hasMethod(address,"getWorkMaxProgress")
         and hasMethod(address,"getSensorInformation")
         and sensor
-    -- The real GTNH EOH adapter is exposed as gt_machine and has these exact methods/sensor markers.
-    -- We still keep multiple matches as manual choices instead of guessing between EOHs.
     return {
         address=address,
         name=name,
@@ -134,7 +140,7 @@ function M.scan(excluded, options)
         if not excluded[address] then
             local ok,proxy=pcall(component.proxy,address)
             if ok and proxy then
-                local name=machineName(proxy,componentName); local evidence=controllerEvidence(address,proxy,name)
+                local name=machineName(address,proxy,componentName); local evidence=controllerEvidence(address,proxy,name)
                 local machine={address=address,name=name,isControllerCandidate=evidence.candidate,score=evidence.score,reasons=evidence.reasons,structural=evidence.structural,strong=evidence.strong}
                 table.insert(found.machines,machine); table.insert(found.all,{address=address,name=name,type="gt_machine"})
                 if evidence.candidate then table.insert(found.controllerCandidates,machine) end
@@ -142,7 +148,7 @@ function M.scan(excluded, options)
         end
     end
     if #found.controllerCandidates==1 then found.eoh=found.controllerCandidates[1].address; found.controllers={found.eoh}
-    elseif #found.controllerCandidates>1 then found.warnings[#found.warnings+1]="Несколько кандидатов EOH: контроллер не выбран автоматически." 
+    elseif #found.controllerCandidates>1 then found.warnings[#found.warnings+1]="Несколько кандидатов EOH: контроллер не выбран автоматически."
     else found.warnings[#found.warnings+1]="Контроллер EOH не распознан автоматически." end
     for address in component.list("transposer") do
         if not excluded[address] then
