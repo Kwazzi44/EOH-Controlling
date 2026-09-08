@@ -99,6 +99,31 @@ local detailCache = {lastNotice=nil, lastRuntime=nil, lastIndex=nil}
 local lastDetailUpdate = 0
 local detailUpdateInterval = 0.3
 
+local function confirmDelete(index)
+    local eoh = registry.getEOH(index)
+    if not eoh then return false end
+    gui.drawConfirmDelete(eoh)
+    while true do
+        local _, _, charCode, keyCode = event.pull("key_down")
+        local char = keyToChar(charCode)
+        if keyCode and (keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28) then
+            return true
+        elseif char == "q" or char == "Q" or isLetter(charCode, keyCode, "b", 48) or keyCode == keyboard.keys.backspace or keyCode == 14 then
+            return false
+        end
+    end
+end
+
+local function deleteSelected(index)
+    local eoh = registry.getEOH(index)
+    if not eoh then return false end
+    if not confirmDelete(index) then return false end
+    local name = eoh.name
+    local ok = registry.removeEOH(index)
+    if ok then logger:info("MAIN", "Deleted EOH #" .. tostring(index) .. " (" .. tostring(name) .. ")") end
+    return ok
+end
+
 local function showDetail(index)
     local eoh = registry.getEOH(index)
     if not eoh then return end
@@ -222,8 +247,14 @@ function main()
             guiCache.eohsHash = nil
             guiCache.runtimesHash = nil
         elseif keyCode and isKey(keyCode, keyboard.keys.delete, 211) then
-            dataDirty = true
-            if #registry.getAll() > 0 then registry.removeEOH(selected); selected = math.max(1, math.min(selected, #registry.getAll())) end
+            if #registry.getAll() > 0 then
+                if deleteSelected(selected) then
+                    selected = math.max(1, math.min(selected, #registry.getAll()))
+                    guiCache.eohsHash = nil
+                    guiCache.runtimesHash = nil
+                end
+                dataDirty = true
+            end
         elseif isKey(keyCode, keyboard.keys.f3, 61) then
             dataDirty = true; registry.load()
         elseif char and (char == "q" or char == "Q") then
