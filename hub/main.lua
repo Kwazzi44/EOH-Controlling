@@ -46,24 +46,33 @@ gui.setBuild(core.build)
 gui.init()
 
 local function keyToChar(key)
-    if type(key) == "number" and key >= 0 and key <= 255 then return string.char(key) end
+    if type(key) == "number" and key >= 0 and key <= 255 then
+        return string.char(key)
+    end
     return ""
 end
 
-local function isLetter(charCode, keyCode, letter, scanCode)
-    return charCode == string.byte(letter) or charCode == string.byte(string.upper(letter)) or keyCode == scanCode
+-- OpenComputers: key_down = address, character, keyCode, player.
+-- Не используем filter в event.pull: на некоторых сборках/версиях OC
+-- это приводило к тому, что клавиатурные события не доходили до меню.
+local function pullKey(timeout)
+    local eventName, address, charCode, keyCode, player = event.pull(timeout)
+    if eventName == "key_down" then
+        return true, charCode, keyCode, player
+    end
+    return false, nil, nil, nil
 end
 
-local function isKey(keyCode, namedKey, fallback)
+local function isKeyCode(keyCode, namedKey, fallback)
     return keyCode == namedKey or keyCode == fallback
 end
 
 local function isRunKey(charCode, keyCode)
-    return charCode == string.byte("r") or charCode == string.byte("R") or keyCode == 19
+    return charCode == string.byte("r")
+        or charCode == string.byte("R")
+        or keyCode == 19
 end
 
--- Backspace/B должны работать независимо от раскладки и от наличия
--- конкретного имени клавиши в keyboard.keys.
 local function isBackKey(charCode, keyCode)
     return charCode == string.byte("b")
         or charCode == string.byte("B")
@@ -71,6 +80,18 @@ local function isBackKey(charCode, keyCode)
         or keyCode == 48
         or keyCode == keyboard.keys.backspace
         or keyCode == 14
+end
+
+local function isF1(keyCode)
+    return keyCode == keyboard.keys.f1 or keyCode == 59
+end
+
+local function isF3(keyCode)
+    return keyCode == keyboard.keys.f3 or keyCode == 61
+end
+
+local function isDelete(keyCode)
+    return keyCode == keyboard.keys.delete or keyCode == 211
 end
 
 local guiCache = {eohsHash=nil, runtimesHash=nil, selected=nil}
@@ -99,10 +120,16 @@ function drawMainScreen(selected)
     if now - lastDrawTime < drawInterval then return end
     local eohs = registry.getAll()
     local runtimes = {}
-    for index, eoh in ipairs(eohs) do runtimes[index] = core.getRuntimeState(eoh.components) end
+    for index, eoh in ipairs(eohs) do
+        runtimes[index] = core.getRuntimeState(eoh.components)
+    end
     local eohsHash = computeEohsHash(eohs)
     local runtimesHash = computeRuntimesHash(runtimes)
-    if guiCache.eohsHash == eohsHash and guiCache.runtimesHash == runtimesHash and guiCache.selected == selected then return end
+    if guiCache.eohsHash == eohsHash
+        and guiCache.runtimesHash == runtimesHash
+        and guiCache.selected == selected then
+        return
+    end
     guiCache.eohsHash = eohsHash
     guiCache.runtimesHash = runtimesHash
     guiCache.selected = selected
@@ -128,8 +155,15 @@ end
 local function showDetail(index)
     local eoh = registry.getEOH(index)
     if not eoh then return end
-    local notice
+
+    local notice = nil
     local needsRedraw = true
+
+    -- Сбрасываем кэш при каждом входе в Detail.
+    detailCache.signature = nil
+    detailCache.notice = nil
+    detailCache.index = nil
+
     while true do
         local now = computer.uptime()
         local runtime = core.getRuntimeState(eoh.components)
@@ -138,10 +172,7 @@ local function showDetail(index)
             or detailCache.index ~= index
             or detailCache.notice ~= notice
 
-        -- Не перерисовываем весь экран каждые 0.3 секунды.
-        -- Обновляем только при изменении состояния/процента или раз в 0.5 с,
-        -- если нужен живой статус.
-        if needsRedraw or changed or (now - lastDetailUpdate >= detailUpdateInterval and signature ~= detailCache.signature) then
+        if needsRedraw or changed then
             gui.drawDetail(eoh, notice, runtime)
             detailCache.signature = signature
             detailCache.notice = notice
@@ -151,73 +182,141 @@ local function showDetail(index)
         end
         notice = nil
 
-        local _, _, charCode, keyCode = event.pull(0.1, "key_down")
-        local char = keyToChar(charCode)
-        if keyCode and (keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28) then
-            configureEOH(index)
-            needsRedraw = true
-        elseif charCode and isRunKey(charCode, keyCode) then
-            needsRedraw = true
-            local started, message = core.startConfiguredCycle(eoh.components, eoh.settings or {})
-            notice = started and "RUN: recipe cycle started" or "RUN BLOCKED: " .. tostring(message)
-        elseif keyCode and isKey(keyCode, keyboard.keys.f1, 59) then
-            setup.runSetup()
-            needsRedraw = true
-        elseif isBackKey(charCode, keyCode) then
-            return
-        elseif isKey(keyCode, keyboard.keys.f3, 61) then
-            needsRedraw = true
+        local gotKey, charCode, keyCode = pullKey(0.1)
+        if gotKey then
+            local char = keyToChar(charCode)
+
+            if keyCode == keyboard.keys.enter
+                or keyCode == keyboard.keys.numpadenter
+                or keyCode == 28 then
+                configureEOH(index)
+                needsRedraw = true
+
+            elseif isRunKey(charCode, keyCode) then
+                local started, message = core.startConfiguredCycle(eoh.components, eoh.settings or {})
+                notice = started
+                    and "RUN: recipe cycle started"
+                    or "RUN BLOCKED: " .. tostring(message)
+                needsRedraw = true
+
+            elseif isF1(keyCode) then
+                setup.runSetup()
+                needsRedraw = true
+
+            elseif isF3(keyCode) then
+                registry.load()
+                eoh = registry.getEOH(index) or eoh
+                needsRedraw = true
+
+            elseif isBackKey(charCode, keyCode) then
+                return
+            end
         end
+
         eoh = registry.getEOH(index) or eoh
     end
 end
 
 function configureEOH(index)
     local eoh = registry.getEOH(index)
-    if not eoh then print("❌ EOH #" .. index .. " не найден"); os.sleep(1); return end
+    if not eoh then
+        print("❌ EOH #" .. index .. " не найден")
+        os.sleep(1)
+        return
+    end
+
     local settings = eoh.settings or {}
-    local defaults = {mode="production", tier=3, useAA=false, overclocks=0, autoRestart=true, tolerance=0.001}
-    for key, value in pairs(defaults) do if settings[key] == nil then settings[key] = value end end
+    local defaults = {
+        mode="production", tier=3, useAA=false,
+        overclocks=0, autoRestart=true, tolerance=0.001
+    }
+    for key, value in pairs(defaults) do
+        if settings[key] == nil then settings[key] = value end
+    end
     if settings.mode ~= "aa" then settings.useAA = false end
     eoh.settings = settings
     core.setComponents(eoh.components)
+
     local inputEnabledAt = computer.uptime() + 0.75
     local field = 1
+
     local function drawSettings()
         term.clear()
         print("EOH SETTINGS: " .. tostring(eoh.name))
         print("")
-        local modeName = settings.mode == "power" and "DEEP DARK" or settings.mode == "aa" and "PRODUCTION + AA" or "PRODUCTION"
-        local values = {"Mode: " .. modeName, "Planet tier: " .. tostring(settings.tier), "Astral Arrays: " .. (settings.mode == "aa" and "ON" or "OFF"), "Overclocks: " .. tostring(settings.overclocks), "Auto restart: " .. (settings.autoRestart and "ON" or "OFF"), "Tolerance: " .. tostring(settings.tolerance * 100) .. "%"}
-        for i, value in ipairs(values) do print((i == field and "> " or "  ") .. i .. ". " .. value) end
+        local modeName = settings.mode == "power" and "DEEP DARK"
+            or settings.mode == "aa" and "PRODUCTION + AA"
+            or "PRODUCTION"
+        local values = {
+            "Mode: " .. modeName,
+            "Planet tier: " .. tostring(settings.tier),
+            "Astral Arrays: " .. (settings.mode == "aa" and "ON" or "OFF"),
+            "Overclocks: " .. tostring(settings.overclocks),
+            "Auto restart: " .. (settings.autoRestart and "ON" or "OFF"),
+            "Tolerance: " .. tostring(settings.tolerance * 100) .. "%"
+        }
+        for i, value in ipairs(values) do
+            print((i == field and "> " or "  ") .. i .. ". " .. value)
+        end
         print("")
         print("UP/DOWN Select  LEFT/RIGHT Change")
         print("ENTER Save  R Run  B Backspace")
     end
+
     local function change(delta)
         if field == 1 then
-            local modes = {"production", "aa", "power"}; local current = 1
-            for i, mode in ipairs(modes) do if settings.mode == mode then current = i end end
-            settings.mode = modes[((current - 1 + delta) % #modes) + 1]; settings.useAA = settings.mode == "aa"
-        elseif field == 2 then settings.tier = math.max(1, math.min(9, settings.tier + delta))
-        elseif field == 3 then settings.useAA = not settings.useAA; settings.mode = settings.useAA and "aa" or "production"
-        elseif field == 4 then settings.overclocks = math.max(0, math.min(3, settings.overclocks + delta))
-        elseif field == 5 then settings.autoRestart = not settings.autoRestart
-        elseif field == 6 then settings.tolerance = math.max(0.001, math.min(0.05, settings.tolerance + delta * 0.001)) end
+            local modes = {"production", "aa", "power"}
+            local current = 1
+            for i, mode in ipairs(modes) do
+                if settings.mode == mode then current = i end
+            end
+            settings.mode = modes[((current - 1 + delta) % #modes) + 1]
+            settings.useAA = settings.mode == "aa"
+        elseif field == 2 then
+            settings.tier = math.max(1, math.min(9, settings.tier + delta))
+        elseif field == 3 then
+            settings.useAA = not settings.useAA
+            settings.mode = settings.useAA and "aa" or "production"
+        elseif field == 4 then
+            settings.overclocks = math.max(0, math.min(3, settings.overclocks + delta))
+        elseif field == 5 then
+            settings.autoRestart = not settings.autoRestart
+        elseif field == 6 then
+            settings.tolerance = math.max(0.001, math.min(0.05, settings.tolerance + delta * 0.001))
+        end
     end
+
     drawSettings()
     while true do
-        local _, _, charCode, keyCode = event.pull("key_down")
-        local char = keyToChar(charCode)
-        if keyCode == keyboard.keys.up then field = math.max(1, field - 1)
-        elseif keyCode == keyboard.keys.down then field = math.min(6, field + 1)
-        elseif keyCode == keyboard.keys.left then change(-1)
-        elseif keyCode == keyboard.keys.right then change(1)
-        elseif keyCode and (keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28) or char == "s" or char == "S" then
-            if computer.uptime() >= inputEnabledAt then registry.updateEOH(index, settings); break end
-        elseif char == "r" or char == "R" then registry.updateEOH(index, settings); core.startConfiguredCycle(eoh.components, settings); break
-        elseif isBackKey(charCode, keyCode) then break end
-        drawSettings()
+        local gotKey, charCode, keyCode = pullKey(nil)
+        if gotKey then
+            local char = keyToChar(charCode)
+            if keyCode == keyboard.keys.up then
+                field = math.max(1, field - 1)
+            elseif keyCode == keyboard.keys.down then
+                field = math.min(6, field + 1)
+            elseif keyCode == keyboard.keys.left then
+                change(-1)
+            elseif keyCode == keyboard.keys.right then
+                change(1)
+            elseif keyCode == keyboard.keys.enter
+                or keyCode == keyboard.keys.numpadenter
+                or keyCode == 28
+                or char == "s"
+                or char == "S" then
+                if computer.uptime() >= inputEnabledAt then
+                    registry.updateEOH(index, settings)
+                    break
+                end
+            elseif char == "r" or char == "R" or keyCode == 19 then
+                registry.updateEOH(index, settings)
+                core.startConfiguredCycle(eoh.components, settings)
+                break
+            elseif isBackKey(charCode, keyCode) then
+                break
+            end
+            drawSettings()
+        end
     end
 end
 
@@ -228,45 +327,76 @@ local dataUpdateInterval = 0.5
 function main()
     dataDirty = true
     registry.load()
+
     for _, eoh in ipairs(registry.getAll()) do
         local settings = eoh.settings or {}
-        if settings.autoRestart ~= false then core.startConfiguredCycle(eoh.components, settings) end
+        if settings.autoRestart ~= false then
+            core.startConfiguredCycle(eoh.components, settings)
+        end
     end
+
     local selected = 1
+
     while true do
         core.tickConfiguredCycles()
         local now = computer.uptime()
-        if not dataDirty and now - lastDataUpdate >= dataUpdateInterval then dataDirty = true end
-        if dataDirty then drawMainScreen(selected); dataDirty = false; lastDataUpdate = now end
-        local _, _, charCode, keyCode = event.pull(0.1, "key_down")
-        local char = keyToChar(charCode)
-        if keyCode and keyCode == keyboard.keys.up then
-            selected = math.max(1, selected - 1); dataDirty = true
-        elseif keyCode and keyCode == keyboard.keys.down then
-            selected = math.min(math.max(1, #registry.getAll()), selected + 1); dataDirty = true
-        elseif keyCode and (keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28) then
-            if registry.getAll()[selected] then showDetail(selected) end
+        if not dataDirty and now - lastDataUpdate >= dataUpdateInterval then
             dataDirty = true
-        elseif char and char >= "1" and char <= "9" then
-            configureEOH(tonumber(char)); dataDirty = true
-        elseif keyCode and isKey(keyCode, keyboard.keys.f1, 59) then
-            setup.runSetup()
-            dataDirty = true
-            guiCache.eohsHash = nil
-            guiCache.runtimesHash = nil
-        elseif keyCode and isKey(keyCode, keyboard.keys.delete, 211) then
-            if #registry.getAll() > 0 then
-                if deleteSelected(selected) then
-                    selected = math.max(1, math.min(selected, #registry.getAll()))
-                    guiCache.eohsHash = nil
-                    guiCache.runtimesHash = nil
+        end
+        if dataDirty then
+            drawMainScreen(selected)
+            dataDirty = false
+            lastDataUpdate = now
+        end
+
+        local gotKey, charCode, keyCode = pullKey(0.1)
+        if gotKey then
+            local char = keyToChar(charCode)
+
+            if keyCode == keyboard.keys.up then
+                selected = math.max(1, selected - 1)
+                dataDirty = true
+
+            elseif keyCode == keyboard.keys.down then
+                selected = math.min(math.max(1, #registry.getAll()), selected + 1)
+                dataDirty = true
+
+            elseif keyCode == keyboard.keys.enter
+                or keyCode == keyboard.keys.numpadenter
+                or keyCode == 28 then
+                if registry.getAll()[selected] then
+                    showDetail(selected)
                 end
                 dataDirty = true
+
+            elseif char and char >= "1" and char <= "9" then
+                configureEOH(tonumber(char))
+                dataDirty = true
+
+            elseif isF1(keyCode) then
+                setup.runSetup()
+                dataDirty = true
+                guiCache.eohsHash = nil
+                guiCache.runtimesHash = nil
+
+            elseif isDelete(keyCode) then
+                if #registry.getAll() > 0 then
+                    if deleteSelected(selected) then
+                        selected = math.max(1, math.min(selected, #registry.getAll()))
+                        guiCache.eohsHash = nil
+                        guiCache.runtimesHash = nil
+                    end
+                    dataDirty = true
+                end
+
+            elseif isF3(keyCode) then
+                dataDirty = true
+                registry.load()
+
+            elseif char and (char == "q" or char == "Q") then
+                logger:info("MAIN", "Выход из программы")
+                break
             end
-        elseif isKey(keyCode, keyboard.keys.f3, 61) then
-            dataDirty = true; registry.load()
-        elseif char and (char == "q" or char == "Q") then
-            logger:info("MAIN", "Выход из программы"); break
         end
     end
 end
