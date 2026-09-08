@@ -58,10 +58,9 @@ local function footer(backLabel, nextLabel)
             {"Up/Down", "Select"},
             {"Enter", nextLabel or "Next"},
             {"Backspace", backLabel or "Back"},
-            {"Esc", "Cancel"},
         })
     else
-        print("[Up/Down] select  [Enter] next  [Backspace] back  [Esc] cancel")
+        print("[Up/Down] select  [Enter] next  [Backspace] back")
     end
 end
 
@@ -102,8 +101,6 @@ local function selectedLoop(title, items, selected, renderItem, allowEmpty, step
             if #items > 0 then return items[selected], selected end
         elseif keyCode == keyboard.keys.backspace or keyCode == 14 then
             return nil, "back"
-        elseif keyCode == keyboard.keys.escape or keyCode == 1 then
-            return nil, "cancel"
         end
     end
 end
@@ -117,7 +114,7 @@ local function waitContinue(message)
     while true do
         local _, keyCode = waitKey()
         if keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28 then return true end
-        if keyCode == keyboard.keys.escape or keyCode == 1 or keyCode == keyboard.keys.backspace or keyCode == 14 then return false end
+        if keyCode == keyboard.keys.backspace or keyCode == 14 then return false end
     end
 end
 
@@ -212,12 +209,11 @@ local function summary(settings, controller, h2, he, plasma)
         "Plasma:     " .. tostring(plasma and plasma.address or "-"),
     }
     for i, row in ipairs(rows) do text(4, 5 + i, row, C.text) end
-    text(4, H - 5, "ENTER = сохранить    BACKSPACE = назад    ESC = отмена", C.warn)
+    text(4, H - 5, "ENTER = сохранить    BACKSPACE = назад", C.warn)
     while true do
         local _, keyCode = waitKey()
         if keyCode == keyboard.keys.enter or keyCode == keyboard.keys.numpadenter or keyCode == 28 then return true end
         if keyCode == keyboard.keys.backspace or keyCode == 14 then return false, "back" end
-        if keyCode == keyboard.keys.escape or keyCode == 1 then return false, "cancel" end
     end
 end
 
