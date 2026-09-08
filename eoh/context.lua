@@ -1,5 +1,5 @@
 -- EOH CONTEXT
--- Immutable-ish per-controller configuration/state boundary.
+-- Persistent per-EOH state boundary shared by HUB and engine.
 local configLib = require("lib.config")
 local loggerLib = require("lib.logger")
 local recipes = require("recipes")
@@ -19,63 +19,81 @@ local function defaultSettings()
     return copyTable(configLib.defaults or {})
 end
 
-function M.new(components, settings)
-    local config = copyTable(configLib)
-    config.components = copyTable(components or {})
-    if type(config.components.transposerPlasmaList) ~= "table" then
-        if type(config.components.transposerPlasmaList) == "string" then
-            config.components.transposerPlasmaList = {config.components.transposerPlasmaList}
+local function normalizeComponents(components)
+    local result = copyTable(components or {})
+    result.eoh = result.eoh or result.eohController
+    result.eohController = result.eohController or result.eoh
+    result.transposerHydrogen = result.transposerHydrogen or result.transposerH2
+    result.transposerH2 = result.transposerH2 or result.transposerHydrogen
+    result.transposerHelium = result.transposerHelium or result.transposerHe
+    result.transposerHe = result.transposerHe or result.transposerHelium
+
+    if type(result.transposerPlasmaList) ~= "table" then
+        if type(result.transposerPlasmaList) == "string" then
+            result.transposerPlasmaList = {result.transposerPlasmaList}
         else
-            config.components.transposerPlasmaList = {}
+            result.transposerPlasmaList = {}
         end
     end
-    if type(config.components.transposers) ~= "table" then
-        config.components.transposers = {}
+    if type(result.transposers) ~= "table" then
+        result.transposers = {}
     end
-    config.transposer = config.transposer or {}
-    config.transposer.sourceSide = config.transposer.sourceSide or "north"
-    config.transposer.targetSide = config.transposer.targetSide or "south"
-    config.transposer.transferRate = config.transposer.transferRate or 1000
+    return result
+end
 
-    local normalizedSettings = defaultSettings()
+local function normalizeSettings(settings)
+    local result = defaultSettings()
     for key, value in pairs(settings or {}) do
-        normalizedSettings[key] = value
+        result[key] = copyTable(value)
     end
-    if normalizedSettings.mode == "aa" then
-        normalizedSettings.useAA = true
-    elseif normalizedSettings.mode ~= "aa" then
-        normalizedSettings.useAA = false
-    end
+    return result
+end
 
+function M.new(components, settings)
+    local normalizedComponents = normalizeComponents(components)
+    local normalizedSettings = normalizeSettings(settings)
     local ctx = {
-        config = config,
-        components = config.components,
+        config = copyTable(configLib),
+        components = normalizedComponents,
         settings = normalizedSettings,
         recipes = recipes,
-        runtime = {},
+        runtime = {
+            stage = "OFF",
+            message = nil,
+            updatedAt = 0,
+            version = 0,
+        },
         runtimeCache = {},
         createdAt = os.clock(),
     }
-
+    ctx.config.components = ctx.components
     ctx.logger = loggerLib.new("/home/eoh", "eoh.log")
     ctx.logger:init()
     return ctx
 end
 
-function M.mergeComponents(ctx, components)
-    ctx.components = copyTable(components or {})
-    ctx.config.components = ctx.components
-    if type(ctx.components.transposerPlasmaList) ~= "table" then
-        ctx.components.transposerPlasmaList = {}
+function M.apply(ctx, components, settings)
+    if components ~= nil then
+        ctx.components = normalizeComponents(components)
+        ctx.config.components = ctx.components
     end
-    if type(ctx.components.transposers) ~= "table" then
-        ctx.components.transposers = {}
+    if settings ~= nil then
+        ctx.settings = normalizeSettings(settings)
     end
     ctx.runtimeCache = {}
+    return ctx
+end
+
+function M.mergeComponents(ctx, components)
+    return M.apply(ctx, components, nil)
 end
 
 function M.getAddress(ctx)
     return ctx.components.eoh or ctx.components.eohController
+end
+
+function M.copy(value)
+    return copyTable(value)
 end
 
 return M
